@@ -18,8 +18,8 @@ export interface TestDaemon {
  * 绝不触碰真实 agent 配置（与单元/集成测试同一约束）。
  */
 export async function startTestDaemon(port = 6290): Promise<TestDaemon> {
-  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-e2e-'));
-  const serverDist = path.dirname(require.resolve('@agent-control/server'));
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-e2e-'));
+  const serverDist = path.dirname(require.resolve('@beaver/server'));
   const child: ChildProcess = spawn(
     process.execPath,
     [serverDist, '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],

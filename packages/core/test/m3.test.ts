@@ -4,8 +4,15 @@ import { AGENT_LIST } from '../src/agents.js';
 import { denormalizeGeminiStyle, normalizeGeminiStyle } from '../src/adapters/json-adapter.js';
 import { decryptSecret, encryptSecret } from '../src/secretbox.js';
 import {
+  baiduMcpWorldToSuggestions,
+  baiduMcpWorldTotal,
+  clineCatalogToSuggestions,
   dedupeSuggestions,
+  dockerCatalogToSuggestions,
   filterByRelevance,
+  mcpmRegistryToSuggestions,
+  modelscopeToSuggestions,
+  npmManifestToSuggestion,
   npmSearchToSuggestions,
   registryEntryToServerInput,
   smitheryToSuggestions,
@@ -177,5 +184,184 @@ describe('M3.6 registry 条目映射（S7）', () => {
       objects: [{ package: { name: 'context7' }, downloads: { weekly: 1276, monthly: 5135 } }],
     });
     expect(suggestions[0]!.useCount).toBe(1276);
+  });
+
+  it('npm manifest 回查映射：有 bin → npx 建议；无 bin / 无名 → null', () => {
+    expect(npmManifestToSuggestion({ name: 'codebase-memory-mcp', bin: 'bin.js' })).toEqual({
+      name: 'codebase-memory-mcp',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', 'codebase-memory-mcp'],
+      gatewayMode: true,
+    });
+    expect(npmManifestToSuggestion({ name: '@scope/pkg', bin: { pkg: 'cli.js' } })).toMatchObject({
+      args: ['-y', '@scope/pkg'],
+    });
+    expect(npmManifestToSuggestion({ name: 'no-bin-pkg' })).toBeNull();
+    expect(npmManifestToSuggestion({ name: 'empty-bin', bin: {} })).toBeNull();
+    expect(npmManifestToSuggestion({ bin: { x: 'x.js' } })).toBeNull();
+  });
+
+  it('npm 搜索：相关性过滤后再按热度排——同名精确包不被高下载模糊匹配埋掉', () => {
+    const ranked = sortByPopularity(
+      filterByRelevance(
+        npmSearchToSuggestions({
+          objects: [
+            { package: { name: '@better-auth/memory-adapter', description: 'Memory adapter' }, downloads: { weekly: 11054730 } },
+            { package: { name: 'codebase-memory-mcp', description: 'Fast code intelligence' }, downloads: { weekly: 8008 } },
+            { package: { name: 'mongodb-memory-server', description: 'MongoDB in-memory' }, downloads: { weekly: 2164713 } },
+          ],
+        }),
+        'codebase-memory-mcp',
+      ),
+    );
+    expect(ranked.map((s) => s.name)).toEqual(['codebase-memory-mcp']);
+  });
+
+  it('GitHub registry 包：registry_name 为空时按 runtime_hint 推断 pypi/npx', () => {
+    const s = registryEntryToServerInput({
+      name: 'microsoft/markitdown',
+      packages: [{ name: 'markitdown-mcp', registry_name: '', runtime_hint: 'uvx' }],
+    });
+    expect(s.suggestion).toMatchObject({ transport: 'stdio', command: 'uvx', args: ['markitdown-mcp'] });
+    const npm = registryEntryToServerInput({
+      name: 'example/tool',
+      packages: [{ name: 'tool-mcp', registry_name: '', runtime_hint: 'npx' }],
+    });
+    expect(npm.suggestion).toMatchObject({ command: 'npx', args: ['-y', 'tool-mcp'] });
+  });
+
+  it('魔搭映射：中文名优先、stdio 配置优先、热度取调用量', () => {
+    const suggestions = modelscopeToSuggestions({
+      Code: 200,
+      Data: {
+        McpServer: {
+          TotalCount: 2,
+          McpServers: [
+            {
+              Name: 'fetch',
+              ChineseName: 'Fetch网页内容抓取',
+              AbstractCN: '抓取网页转为 LLM 友好格式',
+              CallVolume: 326787344,
+              ServerConfig: [{ mcpServers: { fetch: { command: 'uvx', args: ['mcp-server-fetch'] } } }],
+            },
+            {
+              Name: 'amap',
+              ServerConfig: [{ mcpServers: { amap: { type: 'sse', url: 'https://mcp.example.com/sse' } } }],
+            },
+            { Name: 'hosted-only', Hosted: true, DeployedUrl: 'https://hosted.example.com/mcp', ServerConfig: [] },
+          ],
+        },
+      },
+    });
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0]).toMatchObject({ name: 'Fetch网页内容抓取', source: 'modelscope', useCount: 326787344 });
+    expect(suggestions[0]!.suggestion).toEqual({
+      name: 'Fetch网页内容抓取',
+      transport: 'stdio',
+      command: 'uvx',
+      args: ['mcp-server-fetch'],
+      gatewayMode: true,
+    });
+    expect(suggestions[1]!.suggestion).toEqual({
+      name: 'amap',
+      transport: 'sse',
+      url: 'https://mcp.example.com/sse',
+      gatewayMode: true,
+    });
+    // 仅托管端点（需登录态）→ 不给自动添加建议
+    expect(suggestions[2]!.suggestion).toBeNull();
+  });
+
+  it('百度 MCP World 映射：wrapper 数组（真实形态）、wrapper 对象与平铺数组都兼容，建议为 null 仅浏览', () => {
+    const item = { serverName: '高德地图', description: '地图服务', star: 12 };
+    const wrapped = baiduMcpWorldToSuggestions({ data: { count: 62282, mcpList: [{ query: '地图', total: 100, servers: [item] }] } });
+    const obj = baiduMcpWorldToSuggestions({ data: { count: 1, mcpList: { servers: [item] } } });
+    const flat = baiduMcpWorldToSuggestions({ data: { count: 1, mcpList: [item] } });
+    for (const list of [wrapped, obj, flat]) {
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({ name: '高德地图', description: '地图服务', useCount: 12, source: 'baidu' });
+      expect(list[0]!.suggestion).toBeNull();
+    }
+    // 搜索总数取内层 total（命中数），无内层时回退全局 count
+    expect(baiduMcpWorldTotal({ data: { count: 62282, mcpList: [{ total: 100, servers: [] }] } })).toBe(100);
+    expect(baiduMcpWorldTotal({ data: { count: 62282 } })).toBe(62282);
+  });
+
+  it('Cline 目录映射：--transport 提取远程 URL、-- 后为 stdio 命令、非 mcp 条目跳过', () => {
+    const suggestions = clineCatalogToSuggestions({
+      entries: [
+        {
+          type: 'mcp',
+          name: 'Adobe',
+          description: 'Adobe Creative Cloud tools',
+          install: { args: ['adobe-for-creativity', '--transport', 'http', 'https://adobe.io/mcp'] },
+        },
+        {
+          type: 'mcp',
+          name: 'Aikido',
+          install: { args: ['aikido', '--', 'npx', '-y', '@aikidosec/mcp'] },
+        },
+        {
+          type: 'mcp',
+          name: 'Airtable',
+          install: {
+            args: ['airtable', '--transport', 'http', 'https://mcp.airtable.com/mcp'],
+            env: [{ name: 'AIRTABLE_TOKEN', required: true, description: 'token' }],
+          },
+        },
+        { type: 'skill', name: 'a-skill' },
+      ],
+    });
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0]!.suggestion).toEqual({ name: 'Adobe', transport: 'http', url: 'https://adobe.io/mcp', gatewayMode: true });
+    expect(suggestions[1]!.suggestion).toEqual({ name: 'Aikido', transport: 'stdio', command: 'npx', args: ['-y', '@aikidosec/mcp'], gatewayMode: true });
+    expect(suggestions[2]!.suggestion).toMatchObject({ transport: 'http' });
+    expect(suggestions[2]!.description).toContain('AIRTABLE_TOKEN');
+  });
+
+  it('Docker 目录映射：server 类型 → docker run stdio，镜像保持 digest 固定', () => {
+    const suggestions = dockerCatalogToSuggestions({
+      registry: {
+        fetch: { type: 'server', title: 'Fetch', description: 'Fetch web pages', image: 'mcp/fetch@sha256:abc' },
+        secret: { type: 'secret', title: 'Secret', image: 'mcp/secret' },
+        noimage: { type: 'server', title: 'NoImage' },
+      },
+    });
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({ name: 'Fetch', description: 'Fetch web pages', source: 'docker' });
+    expect(suggestions[0]!.suggestion).toEqual({
+      name: 'Fetch',
+      transport: 'stdio',
+      command: 'docker',
+      args: ['run', '-i', '--rm', 'mcp/fetch@sha256:abc'],
+      gatewayMode: true,
+    });
+  });
+
+  it('mcpm 映射：npm 安装优先、python 兜底、custom 占位跳过、必填参数进描述', () => {
+    const suggestions = mcpmRegistryToSuggestions({
+      'a': {
+        name: 'a',
+        display_name: 'A Tool',
+        description: 'Does things',
+        installations: { npm: { command: 'npx', args: ['-y', 'a-mcp'], env: { A_KEY: 'placeholder' } } },
+        arguments: { API_KEY: { required: true } },
+      },
+      'b': { name: 'b', installations: { python: { command: 'uvx', args: ['b-mcp'] } } },
+      'c': { name: 'c', installations: { custom: { command: '/path/to/x', args: [] } } },
+    });
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0]!.suggestion).toEqual({
+      name: 'A Tool',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', 'a-mcp'],
+      env: { A_KEY: 'placeholder' },
+      gatewayMode: true,
+    });
+    expect(suggestions[0]!.description).toBe('Does things · 需配置：API_KEY');
+    expect(suggestions[1]!.suggestion).toMatchObject({ command: 'uvx', args: ['b-mcp'] });
+    expect(suggestions[2]!.suggestion).toBeNull();
   });
 });

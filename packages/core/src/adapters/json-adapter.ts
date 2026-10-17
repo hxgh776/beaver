@@ -117,6 +117,16 @@ export class JsonAgentAdapter implements AgentAdapter {
       throw new MalformedConfigError(file);
     }
     const record = obj as Record<string, unknown>;
+    // 中间层存在但不是纯对象（如 mcp: "str"）→ 形状未知，拒绝写入而非静默覆盖
+    let walk: Record<string, unknown> = record;
+    for (let i = 0; i < this.segments.length - 1; i++) {
+      const next = walk[this.segments[i]!];
+      if (next === undefined) break;
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+        throw new MalformedConfigError(file);
+      }
+      walk = next as Record<string, unknown>;
+    }
     const existingContainer = this.containerOf(record);
     const leafValue = this.locate(record)?.parent[this.segments[this.segments.length - 1]!];
     const containerExisted = leafValue !== undefined;
@@ -201,11 +211,27 @@ export class JsonAgentAdapter implements AgentAdapter {
     };
   }
 
-  /** 深拷贝并移除管辖容器子树——剩余部分必须与写前全等 */
+  /** 深拷贝并移除管辖容器子树——剩余部分必须与写前全等。
+   * 写入可能新建中间层（如首次分发创建 mcp），摘除叶子后残留的空中间壳
+   * 两侧对称剪除，写前不含该中间层的快照才能与写后对齐。 */
   private maskManaged(record: Record<string, unknown>): Record<string, unknown> {
     const clone = JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
-    const loc = this.locate(clone);
-    if (loc) delete loc.parent[loc.leaf];
+    const chain: { parent: Record<string, unknown>; leaf: string }[] = [];
+    let cur: Record<string, unknown> = clone;
+    for (const seg of this.segments) {
+      chain.push({ parent: cur, leaf: seg });
+      const next = cur[seg];
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) break;
+      cur = next as Record<string, unknown>;
+    }
+    const last = chain[chain.length - 1]!;
+    delete last.parent[last.leaf];
+    for (let i = chain.length - 2; i >= 0; i--) {
+      const node = chain[i]!.parent[chain[i]!.leaf];
+      if (node === null || typeof node !== 'object' || Array.isArray(node)) break;
+      if (Object.keys(node).length > 0) break;
+      delete chain[i]!.parent[chain[i]!.leaf];
+    }
     return clone;
   }
 

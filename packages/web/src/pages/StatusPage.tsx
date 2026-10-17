@@ -1,38 +1,35 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, agentInstallTier } from '../api';
+import { api } from '../api';
 import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
-import { Badge, Btn, Card, rowCls, theadCls, useToast } from '../ui';
+import { Badge, Btn, Card, Pager, Segmented, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-/** 探测结果徽章：强证据（命令/默认安装位置）→「已装」；仅配置/数据残留 →「仅数据」；一无所获 →「未发现」 */
+/** 每页 agent 卡片数：4 列 × 2 行，配卡片头部的数字分页切换 */
+const AGENT_PAGE_SIZE = 8;
+
+/** 探测结果徽章：候选配置文件存在 →「已安装」；否则「未发现」 */
 function DetectBadge({ agent }: { agent: AgentInfo }) {
-  const tier = agentInstallTier(agent);
-  if (tier === 'installed') {
-    const strong = agent.installEvidence.find((e) => e.kind !== 'data')!;
-    const tip =
-      strong.kind === 'binary'
-        ? `在 PATH 上发现命令：${strong.path}`
-        : `发现默认安装位置：${strong.path}`;
+  if (agent.detected) {
     return (
-      <span title={tip}>
-        <Badge tone="green">已装</Badge>
+      <span title={`检测到配置文件：${agent.configPaths[0]}`}>
+        <Badge tone="green">已安装</Badge>
       </span>
     );
   }
-  if (tier === 'data-only') {
-    return (
-      <span title="默认位置未发现程序安装，仅检测到配置或数据残留；不影响对该 agent 的配置分发">
-        <Badge tone="amber">仅数据</Badge>
-      </span>
-    );
-  }
-  return <Badge tone="gray">未发现</Badge>;
+  return (
+    <span title="未发现配置文件">
+      <Badge tone="gray">未发现</Badge>
+    </span>
+  );
 }
 
 export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const [tab, setTab] = useState<'agents' | 'import'>('agents');
+  const [page, setPage] = useState(0);
 
   const status = useQuery({ queryKey: ['status'], queryFn: () => api.get<StatusInfo>('/api/status') });
   const agents = useQuery({
@@ -61,26 +58,28 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
     mutationFn: () => agents.refetch(),
     onSuccess: (res) => {
       const list = res.data?.agents ?? [];
-      const installed = list.filter((a) => agentInstallTier(a) === 'installed').length;
-      const dataOnly = list.filter((a) => agentInstallTier(a) === 'data-only').length;
-      toast.ok(
-        `探测完成：${installed} 个已安装，${dataOnly} 个仅检测到配置/数据，${list.length - installed - dataOnly} 个未发现`,
-      );
+      const installed = list.filter((a) => a.detected).length;
+      toast.ok(`探测完成：${installed} 个已安装，${list.length - installed} 个未发现`);
     },
     onError: (e) => toast.err(`探测失败：${String((e as Error).message)}`),
   });
 
   const pending = (imports.data?.groups ?? []).filter((g) => !g.alreadyImported);
-  const detectedCount = (agents.data?.agents ?? []).filter((a) => a.detected).length;
+  const agentList = agents.data?.agents ?? [];
+  const detectedCount = agentList.filter((a) => a.detected).length;
+  // 列表缩短（如重探后）时收敛到合法页码
+  const totalPages = Math.max(1, Math.ceil(agentList.length / AGENT_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageAgents = agentList.slice(safePage * AGENT_PAGE_SIZE, (safePage + 1) * AGENT_PAGE_SIZE);
 
   return (
     <div>
       <Card title="运行状态">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3 xl:grid-cols-5">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3 xl:grid-cols-5">
           <div className="min-w-0 md:col-span-2 xl:col-span-1">
             <dt className="text-xs text-slate-400">数据目录</dt>
             <dd data-testid="home-dir" className="mt-1">
-              <span className="break-all font-mono text-xs leading-relaxed text-slate-600" title={status.data?.homeDir}>
+              <span className="block truncate font-mono text-xs leading-relaxed text-slate-600" title={status.data?.homeDir}>
                 {status.data?.homeDir}
               </span>
             </dd>
@@ -93,14 +92,14 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
             {status.data?.serverCount} / {status.data?.groupCount ?? 0} / {status.data?.bindingCount}
           </Stat>
           <Stat label="已检测到 Agent">
-            {detectedCount} / {(agents.data?.agents ?? []).length}
+            {detectedCount} / {agentList.length}
           </Stat>
         </dl>
-        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
           {(environment.data?.tools ?? []).map((t) => (
             <span
               key={t.name}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs shadow-sm"
               title={`${t.role}${t.version !== undefined ? ` · ${t.version}` : ''}`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${t.found ? 'bg-emerald-500' : 'bg-rose-500'}`} />
@@ -113,7 +112,7 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
 
       <Card
         title="本机 Coding Agent"
-        subtitle={`检测到 ${detectedCount} 个（含残留数据，悬停徽章看详情）；点 agent 卡片可到「Agent 分发」页配置`}
+        subtitle="存在任一候选配置即视为已安装；点 agent 卡片可到「Agent 分发」页配置"
         actions={
           <Btn
             small
@@ -125,70 +124,94 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
           </Btn>
         }
       >
-        {agents.isFetching && !agents.data ? (
-          <p data-testid="detect-progress" className="text-sm text-slate-400">
-            正在扫描本机 agent 配置与安装位置…
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {(agents.data?.agents ?? []).map((a) => (
-              <button
-                key={a.agentType}
-                data-testid={`agent-card-${a.agentType}`}
-                onClick={() => onNavigate?.('sync')}
-                className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
-              >
-                <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="truncate text-sm font-semibold text-slate-800" title={a.displayName}>
-                    {a.displayName}
-                  </span>
-                  <DetectBadge agent={a} />
-                </div>
-                <div className="truncate font-mono text-xs text-slate-400" title={a.configPaths[0]}>
-                  {a.configPaths[0]}
-                </div>
-                <div className="mt-2 text-xs text-slate-500">
-                  分发 <span className="font-semibold tabular-nums text-slate-700">{a.boundServerIds.length}</span>{' '}
-                  个 MCP（含分组）
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </Card>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <Segmented
+            value={tab}
+            onChange={setTab}
+            options={[
+              {
+                value: 'agents',
+                testId: 'overview-tab-agents',
+                label: (
+                  <>
+                    本机 Agent{agentList.length > 0 && <span className="ml-1 tabular-nums">{agentList.length}</span>}
+                  </>
+                ),
+              },
+              {
+                value: 'import',
+                testId: 'overview-tab-import',
+                title: '扫描各 agent 已有的 MCP 配置，一键收编进注册表',
+                label: (
+                  <>
+                    从配置导入{pending.length > 0 && <span className="ml-1 tabular-nums text-brand-600">{pending.length}</span>}
+                  </>
+                ),
+              },
+            ]}
+          />
+          {tab === 'agents' && (
+            <Pager
+              page={safePage}
+              totalPages={totalPages}
+              onPage={setPage}
+              className={agents.isFetching ? 'opacity-50 transition-opacity' : 'transition-opacity'}
+            />
+          )}
+        </div>
 
-      <Card
-        title="从现有配置导入"
-        subtitle="扫描各 agent 已有的 MCP 配置，一键收编进注册表"
-        actions={
-          pending.length > 1 ? (
-            <Btn small kind="primary" disabled={doImport.isPending} onClick={() => doImport.mutate(pending.map((g) => g.fingerprint))}>
-              全部导入（{pending.length}）
-            </Btn>
-          ) : undefined
-        }
-      >
-        {pending.length === 0 ? (
+        {tab === 'agents' ? (
+          agents.isFetching && !agents.data ? (
+            <p data-testid="detect-progress" className="text-sm text-slate-400">
+              正在扫描本机 agent 配置文件…
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+              {pageAgents.map((a) => (
+                <button
+                  key={a.agentType}
+                  data-testid={`agent-card-${a.agentType}`}
+                  onClick={() => onNavigate?.('sync')}
+                  className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-sm font-semibold text-slate-800" title={a.displayName}>
+                      {a.displayName}
+                    </span>
+                    <DetectBadge agent={a} />
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-xs text-slate-400" title={a.configPaths[0]}>
+                    {a.configPaths[0]}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    分发 <span className="font-semibold tabular-nums text-slate-700">{a.boundServerIds.length}</span> 个 MCP
+                    （含分组）
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
+        ) : pending.length === 0 ? (
           <p className="text-sm text-slate-500">没有发现可导入的新 server 配置。</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className={theadCls}>
-                <th className="py-2.5">名称</th>
-                <th className="py-2.5">传输</th>
-                <th className="py-2.5">来源</th>
-                <th className="py-2.5"></th>
+                <th className="py-2">名称</th>
+                <th className="py-2">传输</th>
+                <th className="py-2">来源</th>
+                <th className="py-2"></th>
               </tr>
             </thead>
             <tbody>
               {pending.map((g) => (
                 <tr key={g.fingerprint} className={rowCls}>
-                  <td className="py-2.5 font-medium text-slate-800">{g.suggested.name}</td>
-                  <td className="py-2.5">{g.suggested.transport}</td>
-                  <td className="py-2.5 text-xs text-slate-500">
+                  <td className="py-2 font-medium text-slate-800">{g.suggested.name}</td>
+                  <td className="py-2">{g.suggested.transport}</td>
+                  <td className="py-2 text-xs text-slate-500">
                     {g.candidates.map((c) => c.agentType).join(', ')}
                   </td>
-                  <td className="py-2.5 text-right">
+                  <td className="py-2 text-right">
                     <Btn
                       small
                       kind="primary"
@@ -203,6 +226,13 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
             </tbody>
           </table>
         )}
+        {tab === 'import' && pending.length > 1 && (
+          <div className="mt-3 flex justify-end border-t border-slate-100 pt-2.5">
+            <Btn small kind="primary" disabled={doImport.isPending} onClick={() => doImport.mutate(pending.map((g) => g.fingerprint))}>
+              全部导入（{pending.length}）
+            </Btn>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -212,7 +242,7 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-slate-400">{label}</dt>
-      <dd className="mt-1 truncate text-[15px] font-semibold tabular-nums text-slate-900">{children}</dd>
+      <dd className="mt-1 truncate text-sm font-semibold tabular-nums text-slate-900">{children}</dd>
     </div>
   );
 }

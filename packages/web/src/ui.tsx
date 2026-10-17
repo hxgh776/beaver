@@ -17,12 +17,12 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`mb-5 rounded-xl border border-slate-200/80 bg-white p-5 shadow-card ${className}`}>
+    <section className={`mb-4 rounded-xl border border-slate-200/80 bg-white p-4 shadow-card ${className}`}>
       {(title !== undefined || actions !== undefined) && (
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             {title !== undefined && (
-              <h2 className="text-[15px] font-semibold tracking-tight text-slate-900">{title}</h2>
+              <h2 className="text-base font-semibold tracking-tight text-slate-900">{title}</h2>
             )}
             {subtitle !== undefined && <p className="mt-1 text-xs leading-relaxed text-slate-500">{subtitle}</p>}
           </div>
@@ -46,9 +46,9 @@ export function Btn(props: {
 }) {
   const kind =
     props.kind === 'primary'
-      ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:bg-brand-500 hover:shadow-md hover:shadow-brand-600/25'
+      ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/25 hover:bg-brand-600 active:bg-brand-700'
       : props.kind === 'danger'
-        ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20 hover:bg-rose-500'
+        ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/20 hover:bg-rose-600 active:bg-rose-700'
         : 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900';
   return (
     <button
@@ -56,8 +56,8 @@ export function Btn(props: {
       onClick={props.onClick}
       disabled={props.disabled}
       title={props.title}
-      className={`${props.className ?? ''} inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
-        props.small === true ? 'h-7 rounded-md px-2.5 text-xs' : 'h-9 px-3.5 text-sm'
+      className={`${props.className ?? ''} inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+        props.small === true ? 'h-7 rounded-md px-2.5 text-xs' : 'h-10 px-4 text-sm'
       } ${kind}`}
     >
       {props.children}
@@ -124,7 +124,7 @@ export function Toggle(props: {
           onChange={(e) => props.onChange(e.target.checked)}
           className="peer sr-only"
         />
-        <span className="absolute inset-0 rounded-full bg-slate-200 transition-colors duration-150 peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-2" />
+        <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors duration-150 peer-checked:bg-brand-500 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-400 peer-focus-visible:ring-offset-2" />
         <span className="relative ml-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 peer-checked:translate-x-4" />
       </span>
       {props.label !== undefined && <span className="text-sm text-slate-600">{props.label}</span>}
@@ -152,9 +152,9 @@ export const selectCls =
 export const selectSmCls =
   'w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 shadow-sm transition hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10';
 
-/** 深色代码胶囊（端点 / token 展示） */
+/** 深色代码胶囊（端点 / token 展示）：Claude 深暖色面板 + 米白文字 */
 export const codeChipCls =
-  'break-all rounded-md bg-slate-950 px-2.5 py-1.5 font-mono text-xs leading-relaxed text-emerald-300 ring-1 ring-white/10';
+  'break-all rounded-md bg-slate-950 px-2.5 py-1.5 font-mono text-xs leading-relaxed text-slate-100 ring-1 ring-white/10';
 
 /** 表格统一样式 */
 export const theadCls = 'border-b border-slate-200 text-left text-xs font-medium text-slate-400';
@@ -402,7 +402,7 @@ export function Modal(props: {
   }, [props.onClose]);
   return (
     <div
-      className="fixed inset-0 z-20 flex animate-fade-in items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-20 flex animate-fade-in items-center justify-center bg-slate-950/30 p-4 backdrop-blur-[2px]"
       onClick={props.onClose}
     >
       <div
@@ -413,7 +413,7 @@ export function Modal(props: {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h3 className="text-[15px] font-semibold tracking-tight text-slate-900">{props.title}</h3>
+          <h3 className="text-base font-semibold tracking-tight text-slate-900">{props.title}</h3>
           <button
             onClick={props.onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
@@ -476,7 +476,7 @@ export function Pagination(props: {
         : `第 ${start + 1}-${Math.min(start + props.pageSize, props.total)} 条 · 共 ${props.total} 条`
       : `第 ${props.page + 1} 页${props.hasMore ? '（已显示部分，可继续翻页）' : ''}`;
   return (
-    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
       <span className="text-xs tabular-nums text-slate-400">{rangeText}</span>
       <div className="flex gap-2">
         <Btn small disabled={props.page === 0} onClick={() => props.onPage(props.page - 1)}>
@@ -486,6 +486,84 @@ export function Pagination(props: {
           下一页
         </Btn>
       </div>
+    </div>
+  );
+}
+
+/** 数字分页（带 … 省略号）：固定集合的分页切换，放在卡片头部；仅一页时不渲染 */
+export function Pager(props: {
+  page: number;
+  totalPages: number;
+  onPage: (p: number) => void;
+  className?: string;
+}) {
+  const { page, totalPages } = props;
+  if (totalPages <= 1) return null;
+  // 页码序列：两端页码常驻，中间窗口对齐当前页，超出的用 … 折叠
+  const seq: Array<number | '…'> = [];
+  if (totalPages <= 7) {
+    for (let i = 0; i < totalPages; i++) seq.push(i);
+  } else {
+    seq.push(0);
+    const lo = Math.max(1, page - 1);
+    const hi = Math.min(totalPages - 2, page + 1);
+    if (lo > 1) seq.push('…');
+    for (let i = lo; i <= hi; i++) seq.push(i);
+    if (hi < totalPages - 2) seq.push('…');
+    seq.push(totalPages - 1);
+  }
+  const cls = (active: boolean): string =>
+    `inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs font-medium tabular-nums transition-all duration-150 active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-brand-500 ${
+      active ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/25' : 'text-slate-500 hover:bg-slate-200/70 hover:text-slate-800'
+    }`;
+  return (
+    <nav className={`flex items-center gap-0.5 ${props.className ?? ''}`} aria-label="分页">
+      <button type="button" className={cls(false)} disabled={page === 0} onClick={() => props.onPage(page - 1)} aria-label="上一页">
+        ‹
+      </button>
+      {seq.map((p, i) =>
+        p === '…' ? (
+          <span key={`ellipsis-${i}`} className="px-0.5 text-xs text-slate-400">
+            …
+          </span>
+        ) : (
+          <button key={p} type="button" className={cls(p === page)} aria-current={p === page ? 'page' : undefined} onClick={() => props.onPage(p)}>
+            {p + 1}
+          </button>
+        ),
+      )}
+      <button type="button" className={cls(false)} disabled={page === totalPages - 1} onClick={() => props.onPage(page + 1)} aria-label="下一页">
+        ›
+      </button>
+    </nav>
+  );
+}
+
+// —— 分段标签（胶囊 tab 条）：卡片内切换内容视图 ——
+
+export function Segmented<T extends string>(props: {
+  value: T;
+  onChange: (v: T) => void;
+  options: Array<{ value: T; label: ReactNode; testId?: string; disabled?: boolean; title?: string }>;
+  className?: string;
+}) {
+  return (
+    <div className={`flex gap-1 rounded-lg bg-slate-100 p-1 ${props.className ?? ''}`}>
+      {props.options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          data-testid={o.testId}
+          disabled={o.disabled}
+          title={o.title}
+          onClick={() => props.onChange(o.value)}
+          className={`rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
+            props.value === o.value ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -590,17 +668,20 @@ export function formatLocalDateTime(iso: string): string {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
-/** 品牌 Logo：A 字母（顶点 = agent 节点，横杠带控制旋钮），颜色跟随 currentColor */
+/** 品牌 Logo：河狸剪影（圆耳 + 大脸 + 大板牙），颜色跟随 currentColor */
 export function BrandMark({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
-      <g stroke="currentColor" strokeWidth={5.6} strokeLinecap="round">
-        <path d="M32 14 15.5 50.5" />
-        <path d="M32 14 48.5 50.5" />
-        <path d="M22 38h20" />
+      <g fill="currentColor">
+        <circle cx="15.5" cy="16.5" r="5.6" />
+        <circle cx="48.5" cy="16.5" r="5.6" />
+        <path
+          fillRule="evenodd"
+          d="M10.5 35 a21.5 18 0 1 0 43 0 a21.5 18 0 1 0 -43 0 Z M21.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z M37.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z"
+        />
+        <rect x="27.6" y="43.5" width="4.1" height="11.5" rx="1.7" />
+        <rect x="32.3" y="43.5" width="4.1" height="11.5" rx="1.7" />
       </g>
-      <circle cx="32" cy="14" r="5.2" fill="currentColor" />
-      <circle cx="37.5" cy="38" r="4.2" stroke="currentColor" strokeWidth={2.8} />
     </svg>
   );
 }

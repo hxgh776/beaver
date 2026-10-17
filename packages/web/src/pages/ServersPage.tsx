@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import type { RuntimeTool, ServerDefDTO, ToolInfo } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, CopyBtn, ErrorBanner, Field, Icon, Modal, Spinner, Toggle, inputCls, useToast } from '../ui';
+import type { GatewayInfo, RuntimeTool, ServerDefDTO, ToolInfo } from '../api';
+import { Badge, Btn, Card, ConfirmDialog, CopyBtn, ErrorBanner, Field, Icon, Modal, Pager, Spinner, Toggle, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
+
+/** 每页 server 卡片数：3 列 × 2 行，配卡片头部的数字分页切换 */
+const SERVER_PAGE_SIZE = 6;
 
 interface FormState {
   id?: string;
@@ -62,10 +65,17 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
   const [toolsFor, setToolsFor] = useState<ServerDefDTO | null>(null);
   const [removing, setRemoving] = useState<ServerDefDTO | null>(null);
   const [filter, setFilter] = useState('');
+  const [page, setPage] = useState(0);
 
   const servers = useQuery({
     queryKey: ['servers'],
     queryFn: () => api.get<{ servers: ServerDefDTO[] }>('/api/servers'),
+  });
+  // 运行态与配置态分开：「启用」只是开关，是否真的连得上看这里的快照
+  const gateway = useQuery({
+    queryKey: ['gateway'],
+    queryFn: () => api.get<GatewayInfo>('/api/gateway'),
+    refetchInterval: 5000,
   });
   const environment = useQuery({
     queryKey: ['environment'],
@@ -141,24 +151,28 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
     kw === ''
       ? list
       : list.filter((s) => `${s.name} ${s.id} ${s.command ?? ''} ${(s.args ?? []).join(' ')} ${s.url ?? ''}`.toLowerCase().includes(kw));
+  // 筛选/列表变化后收敛到合法页码
+  const totalPages = Math.max(1, Math.ceil(shown.length / SERVER_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageServers = shown.slice(safePage * SERVER_PAGE_SIZE, (safePage + 1) * SERVER_PAGE_SIZE);
 
   return (
     <div>
       <Card
-        title="MCP 管理"
         subtitle={kw === '' ? `共 ${list.length} 个 server；新增/编辑在弹窗中进行` : `筛选出 ${shown.length} / ${list.length} 个`}
         actions={
           <>
+            <Pager page={safePage} totalPages={totalPages} onPage={setPage} />
             {list.length > 3 && (
               <input
                 data-search-input
-                className="h-9 w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+                className="h-7 w-40 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="筛选名称 / 命令…"
               />
             )}
-            <Btn kind="primary" testId="btn-add-server" onClick={() => setForm({ ...EMPTY })}>
+            <Btn small kind="primary" testId="btn-add-server" onClick={() => setForm({ ...EMPTY })}>
               添加 Server
             </Btn>
           </>
@@ -178,24 +192,30 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {shown.map((s) => {
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+            {pageServers.map((s) => {
               const warn = runtimeWarning(s);
+              // 网关型 + 启用中才有运行态（直连模式进程由 agent 自己拉起，Beaver 不掌握）
+              const gw = s.gatewayMode && s.enabled ? gateway.data?.upstreams.find((u) => u.id === s.id) : undefined;
+              const gwFailed = gw !== undefined && (gw.status === 'error' || gw.status === 'backoff') && gw.lastError !== null;
               return (
                 <div
                   key={s.id}
                   data-testid={`server-row-${s.id}`}
-                  className="flex flex-col rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
+                  className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
                 >
-                  <div className="mb-1.5 flex items-start justify-between gap-2">
+                  <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium" title={s.name}>{s.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-slate-800" title={s.name}>{s.name}</span>
                         {s.gatewayMode ? <Badge tone="blue">网关</Badge> : <Badge tone="gray">直连</Badge>}
                       </div>
                       <div className="truncate text-xs text-slate-400" title={s.id}>{s.id}</div>
                     </div>
-                    {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {gw !== undefined && <RuntimeBadge status={gw.status} />}
+                      {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
+                    </div>
                   </div>
                   <div className="mb-2 flex items-center gap-1.5">
                     <span
@@ -215,7 +235,13 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
                       <Badge tone="amber">⚠ {warn}</Badge>
                     </div>
                   )}
-                  <div className="mt-auto flex gap-2 border-t border-slate-100 pt-2.5">
+                  {gwFailed && (
+                    <div className="mb-2 truncate text-xs text-rose-600" title={gw?.lastError ?? ''}>
+                      {gw?.status === 'backoff' ? '连接断开，重试中：' : '连接失败：'}
+                      {gw?.lastError}
+                    </div>
+                  )}
+                  <div className="mt-auto flex gap-2 border-t border-slate-100 pt-2">
                     <Btn small onClick={() => setForm(toForm(s))}>编辑</Btn>
                     <Btn small onClick={() => setToolsFor(s)}>工具</Btn>
                     <Btn
@@ -266,6 +292,15 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
       )}
     </div>
   );
+}
+
+/** 运行态徽标：来自网关快照，与配置态「启用/停用」分开——启用 ≠ 连得上 */
+function RuntimeBadge({ status }: { status: string }) {
+  if (status === 'ready') return <Badge tone="green">运行中</Badge>;
+  if (status === 'starting') return <Badge tone="blue">启动中</Badge>;
+  if (status === 'backoff') return <Badge tone="amber">重连中</Badge>;
+  if (status === 'error') return <Badge tone="red">出错</Badge>;
+  return <Badge tone="gray">未运行</Badge>;
 }
 
 function ServerForm({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {

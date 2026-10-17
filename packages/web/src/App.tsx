@@ -19,7 +19,7 @@ const TABS = [
   { key: 'sync', label: 'Agent 分发', icon: 'sync', desc: '分组管理，一次配置同步到 Claude Code、Cursor 等 agent' },
   { key: 'gateway', label: '聚合网关', icon: 'gateway', desc: '多个 MCP 聚合为一个端点、访问令牌与上游进程' },
   { key: 'logs', label: '调用日志', icon: 'logs', desc: '网关调用记录与上游进程输出' },
-  { key: 'skills', label: 'Skill 管理', icon: 'skills', desc: '安装 / 启停 / 更新 SKILL.md 技能，分发到 8 个 agent（Claude Code / Codex / Gemini CLI / OpenCode / ZCode / Cursor / Windsurf / Trae）' },
+  { key: 'skills', label: 'Skill 管理', icon: 'skills', desc: '安装 / 启停 / 更新 SKILL.md 技能，分发到 8 个 agent' },
   { key: 'providers', label: '供应商', icon: 'providers', desc: 'Claude Code / Codex / Gemini 供应商一键切换' },
 ] as const;
 
@@ -125,7 +125,7 @@ function AppShell() {
           <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
             无法连接 daemon（{String((status.error as Error).message)}）。请确认已运行{' '}
-            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-xs">actl start</code>。
+            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-xs">dam start</code>。
           </div>
         </div>
       </div>
@@ -137,13 +137,13 @@ function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="flex w-56 shrink-0 flex-col bg-slate-950">
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/[0.06] px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 shadow-lg shadow-brand-500/30">
+      <aside className="flex w-56 shrink-0 flex-col bg-slate-100">
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-500/25">
             <BrandMark className="h-5.5 w-5.5 text-white" />
           </div>
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold text-white">Agent Control</div>
+            <div className="text-sm font-semibold text-slate-900">Beaver</div>
             <div className="mt-0.5 text-xs tabular-nums text-slate-500">
               v{status.data?.version} · 端口 {status.data?.port}
             </div>
@@ -159,43 +159,43 @@ function AppShell() {
                 onClick={() => switchTab(t.key)}
                 title={`${t.desc}（快捷键 Alt+${i + 1}）`}
                 className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
-                  active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  active ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
               >
                 <Icon
                   name={t.icon}
                   className={`h-4.5 w-4.5 shrink-0 transition-colors ${
-                    active ? 'text-brand-300' : 'text-slate-500 group-hover:text-slate-300'
+                    active ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'
                   }`}
                 />
                 {t.label}
-                {active && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />}
+                {active && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />}
               </button>
             );
           })}
         </nav>
-        <div className="shrink-0 border-t border-white/[0.06] p-3">
-          <div className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
+        <div className="shrink-0 border-t border-slate-200 p-3">
+          <div className="flex items-center gap-2 rounded-lg bg-slate-200/70 px-3 py-2 text-xs text-slate-500">
             <span className="relative flex h-2 w-2 shrink-0">
               {gwRunning && (
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               )}
-              <span className={`relative inline-flex h-2 w-2 rounded-full ${gwRunning ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${gwRunning ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             </span>
             网关{gwRunning ? '运行中' : '已停止'}
           </div>
-          <div className="mt-1.5 px-1 text-[11px] leading-relaxed text-slate-600">
-            <kbd className="rounded bg-white/5 px-1 py-0.5 font-mono">Alt+1-8</kbd> 切页 ·{' '}
-            <kbd className="rounded bg-white/5 px-1 py-0.5 font-mono">/</kbd> 搜索
+          <div className="mt-1.5 px-1 text-xs leading-relaxed text-slate-400">
+            <kbd className="rounded border border-slate-300/80 bg-white px-1 py-0.5 font-mono text-slate-500">Alt+1-8</kbd> 切页 ·{' '}
+            <kbd className="rounded border border-slate-300/80 bg-white px-1 py-0.5 font-mono text-slate-500">/</kbd> 搜索
           </div>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         {/* 不做页面级入场动画：初帧时间线被节流的环境（无头截图/后台标签）会停在透明第一帧 */}
-        <div className="mx-auto max-w-6xl px-8 py-8">
-          <header className="mb-6">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{current.label}</h1>
-            <p className="mt-1 text-sm text-slate-500">{current.desc}</p>
+        <div className="mx-auto max-w-7xl px-6 py-5">
+          <header className="mb-4 flex flex-wrap items-baseline gap-x-3">
+            <h1 className="font-display text-xl font-medium tracking-tight text-slate-900">{current.label}</h1>
+            <p className="text-xs text-slate-500">{current.desc}</p>
           </header>
           {tab === 'status' && <StatusPage onNavigate={switchTab} />}
           {tab === 'servers' && <ServersPage onNavigate={switchTab} />}
@@ -224,20 +224,20 @@ function TokenGate({ onOk }: { onOk: () => void }) {
     }
   };
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950">
+    <div className="flex min-h-screen items-center justify-center bg-slate-100">
       <div className="w-96 animate-scale-in rounded-2xl bg-white p-8 shadow-pop">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 shadow-lg shadow-brand-500/30">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-500/25">
             <BrandMark className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-slate-900">Agent Control</h1>
+            <h1 className="font-display text-lg font-medium tracking-tight text-slate-900">Beaver</h1>
             <p className="text-xs text-slate-400">本机守护进程访问</p>
           </div>
         </div>
         <p className="mb-4 text-xs leading-relaxed text-slate-500">
-          输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.agent-control/config.json</code>{' '}
-          的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">actl status</code>）
+          输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.beaver/config.json</code>{' '}
+          的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">dam status</code>）
         </p>
         <input
           data-testid="token-input"
@@ -255,7 +255,7 @@ function TokenGate({ onOk }: { onOk: () => void }) {
         )}
         <button
           data-testid="token-submit"
-          className="h-10 w-full rounded-lg bg-brand-600 text-sm font-medium text-white shadow-sm shadow-brand-600/25 transition-all duration-150 hover:bg-brand-500 active:scale-[0.98]"
+          className="h-10 w-full rounded-lg bg-brand-500 text-sm font-medium text-white shadow-sm shadow-brand-500/25 transition-all duration-150 hover:bg-brand-600 active:bg-brand-700 active:scale-[0.98]"
           onClick={() => void tryAuth()}
         >
           进入

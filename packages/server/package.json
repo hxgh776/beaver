@@ -1,5 +1,5 @@
 {
-  "name": "@agent-control/server",
+  "name": "@beaver/server",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -28,7 +28,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@agent-control/core": "workspace:*",
+    "@beaver/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.24.0"
   }

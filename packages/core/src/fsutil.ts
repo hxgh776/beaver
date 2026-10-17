@@ -2,10 +2,28 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+/** 同路径写互斥：tmp 名含 Date.now()，同毫秒并发写同一文件会生成同名 tmp——
+ * 先完成的 rename 把文件移走，后一个 rename 必 ENOENT。按目标路径排队串行，
+ * 配合"内存单实例 + 全量落盘"的保存模式，串行后的 last-write-wins 即正确结果。 */
+const writeQueues = new Map<string, Promise<unknown>>();
+
+export async function atomicWriteFile(filePath: string, data: string): Promise<void> {
+  const key = path.resolve(filePath);
+  const job = (writeQueues.get(key) ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => atomicWriteFileInner(filePath, data));
+  writeQueues.set(key, job);
+  try {
+    await job;
+  } finally {
+    if (writeQueues.get(key) === job) writeQueues.delete(key);
+  }
+}
+
 /** 原子写：临时文件 + 同卷 rename；成功后目录内不残留临时文件。
  * Windows 上 rename 覆盖已有文件可能因目标被短暂占用（杀软/索引器）抛 EPERM/EBUSY，
  * 采用指数退避重试——这是发布到用户机器的必要健壮性。 */
-export async function atomicWriteFile(filePath: string, data: string): Promise<void> {
+async function atomicWriteFileInner(filePath: string, data: string): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);

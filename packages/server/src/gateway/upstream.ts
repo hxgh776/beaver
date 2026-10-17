@@ -2,9 +2,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { decryptRecord } from '@agent-control/core';
+import { decryptRecord } from '@beaver/core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ServerDef } from '@agent-control/core';
+import type { ServerDef } from '@beaver/core';
 import type { Logger } from '../logger.js';
 
 export type UpstreamStatus = 'idle' | 'starting' | 'ready' | 'error' | 'backoff';
@@ -75,7 +75,7 @@ export class Upstream {
 
   private async connect(): Promise<Client> {
     const client = new Client(
-      { name: 'agent-control-gateway', version: '0.1.0' },
+      { name: 'beaver-gateway', version: '0.1.0' },
       { capabilities: {} },
     );
     // S4：静态加密凭证在使用点解密（内存明文，不落盘）
@@ -299,15 +299,32 @@ export class UpstreamManager {
     await Promise.all([...this.upstreams.values()].map((u) => u.stop()));
   }
 
+  /**
+   * 快照 = 已实例化的上游 + 启用中的网关型 server 的 idle 占位。
+   * 懒启动下未被调用过的 server 也要出现在列表里，管理页才能区分「启用」（配置态）与「未运行/出错」（运行态）。
+   */
   snapshots(): UpstreamSnapshot[] {
-    return [...this.upstreams.values()].map((u) => ({
-      id: u.id,
-      status: u.status,
-      ...(u.pid !== undefined ? { pid: u.pid } : {}),
-      toolCount: u.toolsCache.length,
-      lastError: u.lastError,
-    }));
+    const out = new Map<string, UpstreamSnapshot>();
+    for (const d of this.getDefs()) {
+      if (!d.enabled || !d.gatewayMode) continue;
+      const u = this.upstreams.get(d.id);
+      out.set(d.id, u !== undefined && u.def === d ? snapshotOf(u) : { id: d.id, status: 'idle', toolCount: 0, lastError: null });
+    }
+    for (const u of this.upstreams.values()) {
+      if (!out.has(u.id)) out.set(u.id, snapshotOf(u));
+    }
+    return [...out.values()];
   }
+}
+
+function snapshotOf(u: Upstream): UpstreamSnapshot {
+  return {
+    id: u.id,
+    status: u.status,
+    ...(u.pid !== undefined ? { pid: u.pid } : {}),
+    toolCount: u.toolsCache.length,
+    lastError: u.lastError,
+  };
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

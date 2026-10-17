@@ -22,13 +22,13 @@ let engine: SyncEngine;
 let config: ManagerConfig;
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-sync-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-sync-'));
   agents = makeAgents(sandbox);
   store = new Store(sandbox);
   engine = new SyncEngine({
     backupsDir: store.backupsDir,
     agents,
-    stdioBridge: { command: 'node', baseArgs: ['C:/tools/agent-control/bridge-main.js'] },
+    stdioBridge: { command: 'node', baseArgs: ['C:/tools/beaver/bridge-main.js'] },
   });
   config = await store.load();
 });
@@ -55,19 +55,19 @@ async function writeAgentFile(relSegments: string[], content: string): Promise<v
 }
 
 describe('detect + import (U-IM / C1 C5)', () => {
-  it('探测：只认存在配置文件的 agent（安装探测关闭时）', async () => {    await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
+  it('探测：只认存在配置文件的 agent', async () => {
+    await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
     await fs.writeFile(
       path.join(sandbox, '.cursor', 'mcp.json'),
       JSON.stringify({ mcpServers: { ctx: { command: 'node', args: ['ctx.js'] } } }),
       'utf8',
     );
-    const detections = await detectAgents(agents, { probeInstall: false });
+    const detections = await detectAgents(agents);
     const byType = new Map(detections.map((d) => [d.agentType, d]));
     expect(byType.get('cursor')!.detected).toBe(true);
-    expect(byType.get('cursor')!.configExists).toBe(true);
+    expect(byType.get('cursor')!.configPaths).toEqual([path.join(sandbox, '.cursor', 'mcp.json')]);
     expect(byType.get('claude-code')!.detected).toBe(false);
-    expect(byType.get('claude-code')!.configExists).toBe(false);
-    expect(byType.get('claude-code')!.installEvidence).toEqual([]);
+    expect(byType.get('claude-code')!.configPaths).toEqual([path.join(sandbox, '.claude.json')]);
   });
 
   it('导入：跨 agent 指纹去重，applyImport 跳过注册表已有项', async () => {
@@ -98,14 +98,14 @@ describe('detect + import (U-IM / C1 C5)', () => {
     expect(applyImport(config, groups2)).toHaveLength(0);
   });
 
-  it('Issue-1：导入预览排除网关公共条目 agent-control-gateway（含更名前旧键）', async () => {
+  it('Issue-1：导入预览排除网关公共条目 beaver-gateway（含更名前旧键）', async () => {
     await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
     await fs.writeFile(
       path.join(sandbox, '.cursor', 'mcp.json'),
       JSON.stringify({
         mcpServers: {
+          'beaver-gateway': { url: 'http://127.0.0.1:6280/mcp', headers: { Authorization: 'Bearer x' } },
           'agent-control-gateway': { url: 'http://127.0.0.1:6280/mcp', headers: { Authorization: 'Bearer x' } },
-          'mcp-manager-gateway': { url: 'http://127.0.0.1:6280/mcp', headers: { Authorization: 'Bearer x' } },
           real: { command: 'node', args: ['real.js'] },
         },
       }),
@@ -201,7 +201,7 @@ describe('sync engine (I-SY)', () => {
     });
 
     const codexText = await fs.readFile(path.join(sandbox, '.codex', 'config.toml'), 'utf8');
-    expect(codexText).toContain('[mcp_servers.agent-control-gateway]');
+    expect(codexText).toContain('[mcp_servers.beaver-gateway]');
     expect(codexText).toContain('bridge-main.js');
     expect(codexText).toContain(`http://127.0.0.1:${config.settings.port}/agents/codex/mcp`);
     expect(codexText).not.toContain('--token=');
@@ -313,6 +313,40 @@ describe('ZCode 嵌套容器 + WorkBuddy 适配（M3.7）', () => {
     expect(after.hooks).toEqual({ enabled: false });
   });
 
+  it('ZCode：首次分发（文件无 mcp 键）创建嵌套容器，写后校验通过', async () => {
+    // 回归：中间层 mcp 由写入新建时，校验须剪掉残留空壳而非误判回滚
+    await writeAgentFile(
+      ['.zcode', 'cli', 'config.json'],
+      JSON.stringify({ plugins: { 'some-plugin': true }, hooks: { enabled: false } }),
+    );
+    addStdioServer('filesystem', 'Filesystem');
+    setBinding(config, 'filesystem', 'zcode');
+    await engine.sync(config);
+
+    const after = JSON.parse(await fs.readFile(path.join(sandbox, '.zcode', 'cli', 'config.json'), 'utf8'));
+    expect(after.mcp.servers['filesystem']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem'],
+      env: { TOKEN: 'secret-filesystem' },
+    });
+    expect(after.plugins).toEqual({ 'some-plugin': true });
+    expect(after.hooks).toEqual({ enabled: false });
+  });
+
+  it('ZCode：mcp 为空对象可正常创建 servers；mcp 非法形状拒绝写入且文件不动', async () => {
+    await writeAgentFile(['.zcode', 'cli', 'config.json'], JSON.stringify({ mcp: {} }));
+    addStdioServer('filesystem', 'Filesystem');
+    setBinding(config, 'filesystem', 'zcode');
+    await engine.sync(config);
+    const after = JSON.parse(await fs.readFile(path.join(sandbox, '.zcode', 'cli', 'config.json'), 'utf8'));
+    expect(after.mcp.servers['filesystem'].command).toBe('npx');
+
+    const broken = JSON.stringify({ mcp: 'not-an-object' });
+    await writeAgentFile(['.zcode', 'cli', 'config.json'], broken);
+    await expect(engine.sync(config)).rejects.toMatchObject({ code: 'MALFORMED_CONFIG' });
+    expect(await fs.readFile(path.join(sandbox, '.zcode', 'cli', 'config.json'), 'utf8')).toBe(broken);
+  });
+
   it('WorkBuddy：streamableHttp 归一化为 http；未管辖条目的 timeout/disabled 保留', async () => {
     await writeAgentFile(
       ['.workbuddy', 'mcp.json'],
@@ -322,9 +356,9 @@ describe('ZCode 嵌套容器 + WorkBuddy 适配（M3.7）', () => {
         },
       }),
     );
-    const detections = await detectAgents(agents, { probeInstall: false });
+    const detections = await detectAgents(agents);
     const wb = detections.find((d) => d.agentType === 'workbuddy')!;
-    expect(wb.configExists).toBe(true);
+    expect(wb.detected).toBe(true);
 
     addStdioServer('filesystem', 'Filesystem');
     setBinding(config, 'filesystem', 'workbuddy');

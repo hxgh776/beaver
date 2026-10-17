@@ -5,8 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       // 让测试直接跑各包的 TS 源码，无需先 build
-      '@agent-control/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
-      '@agent-control/server': path.resolve(__dirname, 'packages/server/src/index.ts'),
+      '@beaver/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
+      '@beaver/server': path.resolve(__dirname, 'packages/server/src/index.ts'),
     },
   },
   test: {

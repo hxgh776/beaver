@@ -1,11 +1,11 @@
 {
-  "name": "@hxgh776/agent-control",
+  "name": "@hxgh776/beaver",
   "version": "0.1.0",
-  "description": "Agent Control (actl) \u2014 local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
+  "description": "Beaver (河狸) \u2014 local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
   "type": "module",
   "bin": {
-    "actl": "dist/index.js",
-    "agent-control": "dist/index.js"
+    "dam": "dist/index.js",
+    "beaver": "dist/index.js"
   },
   "files": [
     "dist"
@@ -15,8 +15,8 @@
     "release": "node scripts/publish.mjs"
   },
   "dependencies": {
-    "@agent-control/core": "workspace:*",
-    "@agent-control/server": "workspace:*",
+    "@beaver/core": "workspace:*",
+    "@beaver/server": "workspace:*",
     "commander": "^13.0.0"
   },
   "engines": {

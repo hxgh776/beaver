@@ -86,7 +86,7 @@ describe('G7 stdio 反向桥（M2.1）', () => {
     const upstream = await startFakeHttpUpstream(false);
     cleanups.push(upstream.close);
 
-    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-bridge-'));
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-bridge-'));
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [BRIDGE_MAIN, upstream.url, '--name', 'bridged'],

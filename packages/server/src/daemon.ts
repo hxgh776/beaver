@@ -8,9 +8,9 @@ import {
   recoverPendingPublications,
   detectAgents,
   makeAgents,
-} from '@agent-control/core';
-import { ProvidersService, SkillsService } from '@agent-control/core';
-import type { AgentDetection, ManagerConfig } from '@agent-control/core';
+} from '@beaver/core';
+import { ProvidersService, SkillsService } from '@beaver/core';
+import type { AgentDetection, ManagerConfig } from '@beaver/core';
 import { Logger } from './logger.js';
 import type { LogLevel } from './logger.js';
 import { Router } from './router.js';

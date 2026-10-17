@@ -24,7 +24,7 @@ const publishManifest = {
   files: ['*'],
   engines: pkg.engines,
   license: 'MIT',
-  repository: pkg.repository ?? { type: 'git', url: 'git+https://github.com/hxgh776/agent-control.git' },
+  repository: pkg.repository ?? { type: 'git', url: 'git+https://github.com/hxgh776/beaver.git' },
   dependencies: {},
 };
 await fs.writeFile(path.join(tmp, 'package.json'), JSON.stringify(publishManifest, null, 2) + '\n');

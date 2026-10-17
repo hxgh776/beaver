@@ -20,7 +20,7 @@ const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../.
 const readFixture = async (name: string): Promise<Buffer> => fs.readFile(path.join(fixtureDir, name));
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skills-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skills-'));
   store = new Store(sandbox);
   config = await store.load();
   service = new SkillsService({

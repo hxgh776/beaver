@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- AgentControl mark, monochrome white — for dark backgrounds. Knob is an open ring (background-independent). -->
-  <g stroke="#FFFFFF" stroke-width="5.6" stroke-linecap="round" fill="none">
-    <path d="M32 14 15.5 50.5"/>
-    <path d="M32 14 48.5 50.5"/>
-    <path d="M22 38h20"/>
+  <!-- Beaver mark, monochrome white — for dark backgrounds. Eyes punched via even-odd. -->
+  <g fill="#FFFFFF">
+    <circle cx="15.5" cy="16.5" r="5.6"/>
+    <circle cx="48.5" cy="16.5" r="5.6"/>
+    <path fill-rule="evenodd" d="M10.5 35 a21.5 18 0 1 0 43 0 a21.5 18 0 1 0 -43 0 Z M21.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z M37.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z"/>
+    <rect x="27.6" y="43.5" width="4.1" height="11.5" rx="1.7"/>
+    <rect x="32.3" y="43.5" width="4.1" height="11.5" rx="1.7"/>
   </g>
-  <circle cx="32" cy="14" r="5.2" fill="#FFFFFF"/>
-  <circle cx="37.5" cy="38" r="4.2" stroke="#FFFFFF" stroke-width="2.8"/>
 </svg>

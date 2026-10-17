@@ -35,3 +35,6 @@ pip-wheel-metadata/
 wheels/
 # ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
 # 自定义规则写在下方（本行提示可删除）
+
+# git worktree 并行任务工作区（见 AGENTS.md），不参与文件搜索，避免读到其他任务的副本
+.worktrees/

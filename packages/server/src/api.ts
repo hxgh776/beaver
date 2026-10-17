@@ -1,11 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import {
   applyImport,
+  baiduMcpWorldToSuggestions,
+  clineCatalogToSuggestions,
   decryptRecord,
   dedupeSuggestions,
   deleteGroup,
   deleteServer,
   detectEnvironment,
+  dockerCatalogToSuggestions,
   effectiveBoundIds,
   encryptRecord,
   filterByRelevance,
@@ -14,6 +17,10 @@ import {
   groupRemoveServer,
   groupUnbindAgent,
   importPreview,
+  mcpmRegistryToSuggestions,
+  modelscopeToSuggestions,
+  baiduMcpWorldTotal,
+  npmManifestToSuggestion,
   npmSearchToSuggestions,
   registryEntryToServerInput,
   removeBinding,
@@ -24,9 +31,9 @@ import {
   upsertServer,
   SKILL_AGENT_LIST,
   presetEnv,
-} from '@agent-control/core';
-import type { ProviderApp } from '@agent-control/core';
-import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@agent-control/core';import { z } from 'zod';
+} from '@beaver/core';
+import type { ProviderApp } from '@beaver/core';
+import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@beaver/core';import { z } from 'zod';
 import type { Daemon } from './daemon.js';
 import { sendError, sendJson } from './http-util.js';
 import type { Router } from './router.js';
@@ -426,13 +433,41 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     });
   });
 
-  // registry 搜索/浏览——三源可选：官方 MCP Registry / Smithery / npm（镜像回退）。
-  // 支持分页（limit/offset）；q 为空 = 浏览模式（官方与 Smithery 支持浏览，npm 需要关键词）。
+  // registry 搜索/浏览——九源可选：官方 / GitHub 镜像 / Smithery / npm（镜像回退）＋国内魔搭、百度，
+  // 以及 Cline 市场、Docker 目录、mcpm 三个免鉴权聚合目录。
+  // 支持分页（limit/offset）；q 为空 = 浏览模式（npm 需要关键词，其余源均可浏览）。
   // 官方源偶发忽略 search 参数 → 结果统一做相关性过滤与按名去重，不信任上游。
+  // 官方条目缺安装配置（如仅 MCPB 桌面包）→ 按名回查 npm 补 npx 建议。
   const OFFICIAL_REGISTRY = 'https://registry.modelcontextprotocol.io';
+  const GITHUB_REGISTRY = 'https://api.mcp.github.com';
   const SMITHERY_REGISTRY = 'https://registry.smithery.ai';
   const NPM_HOSTS = ['https://registry.npmjs.org', 'https://registry.npmmirror.com'];
+  const MODELSCOPE_API = 'https://www.modelscope.cn/api/v1/dolphin/mcpServers';
+  const BAIDU_MCP_API = 'https://www.mcpworld.com/api/mcp-market/servers';
+  const CLINE_CATALOG = 'https://cline.github.io/marketplace/catalog.json';
+  const DOCKER_CATALOG = 'https://desktop.docker.com/mcp/catalog/v2/catalog.json';
+  const MCPM_REGISTRY = 'https://mcpm.sh/api/servers.json';
   const DEFAULT_PAGE_SIZE = 20;
+
+  // 静态目录（Cline/Docker/mcpm 无服务端搜索）的进程内缓存：整包拉一次，TTL 内复用
+  const catalogCache = new Map<string, { at: number; data: unknown }>();
+  const fetchCatalog = async (url: string, attempts = 1): Promise<unknown> => {
+    const hit = catalogCache.get(url);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.data;
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { accept: 'application/json' } });
+        if (!res.ok) throw new Error(`返回 ${res.status}`);
+        const data: unknown = await res.json();
+        catalogCache.set(url, { at: Date.now(), data });
+        return data;
+      } catch (err) {
+        lastErr = err; // Docker CDN 偶发连接重置，允许重试
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  };
 
   router.get('/api/registry/search', async (ctx) => {
     const q = ctx.query.get('q')?.trim() ?? '';
@@ -441,7 +476,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     const source = ctx.query.get('source') ?? 'official';
     const failures: string[] = [];
 
-    // —— npm 搜索（优先官方源、失败回退国内镜像；按周下载热度排序） ——
+    // —— npm 搜索（优先官方源、失败回退国内镜像；相关性过滤 + 按周下载热度排序） ——
     const POPULARITY_WINDOW = 250; // npm 单次搜索上限 250：拉满后本地按热度排序再切片
     const npmSearch = async (): Promise<void> => {
       if (q === '') return; // npm 无浏览目录：空词直接返回，让上层兜底报错
@@ -460,7 +495,10 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
             continue;
           }
           const data = (await res.json()) as Parameters<typeof npmSearchToSuggestions>[0] & { total?: number };
-          const servers = sortByPopularity(npmSearchToSuggestions(data)).slice(offset - from, offset - from + limit);
+          // 先做相关性过滤再按热度排：npm 上游模糊匹配会把精确命中的同名包混入大量高下载无关包，
+          // 纯热度排序会把它彻底埋掉（如 codebase-memory-mcp 被压到百位开外）
+          const candidates = filterByRelevance(npmSearchToSuggestions(data), q);
+          const servers = sortByPopularity(candidates).slice(offset - from, offset - from + limit);
           const total = data.total;
           sendJson(ctx.res, 200, {
             servers,
@@ -539,21 +577,53 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
       }
     };
 
-    // —— 官方 registry（offset 翻页 + 相关性过滤 + 按名去重；失败回退 npm） ——
+    // —— 官方 registry / GitHub 镜像（同构 schema：offset 翻页 + 相关性过滤 + 按名去重；失败回退） ——
     const officialBase = daemon.config.settings.registryBaseUrl?.trim() || OFFICIAL_REGISTRY;
-    const officialSearch = async (): Promise<void> => {
+    // npm manifest 精确回查（GET /<pkg>/latest）：官方条目缺安装配置时（如仅提供 MCPB 桌面包）
+    // 按名找同名 npm 包补 npx 建议；npmjs 失败回退国内镜像。拿到 manifest 即止（镜像内容一致）。
+    const npmManifestBackfill = async (
+      names: string[],
+    ): Promise<Map<string, NonNullable<ReturnType<typeof npmManifestToSuggestion>>>> => {
+      const out = new Map<string, NonNullable<ReturnType<typeof npmManifestToSuggestion>>>();
+      await Promise.all(
+        names.map(async (name) => {
+          for (const host of NPM_HOSTS) {
+            try {
+              const res = await fetch(`${host}/${encodeURIComponent(name)}/latest`, {
+                signal: AbortSignal.timeout(8_000),
+                headers: { accept: 'application/json' },
+              });
+              if (!res.ok) continue;
+              const manifest = (await res.json()) as Parameters<typeof npmManifestToSuggestion>[0];
+              const suggestion = npmManifestToSuggestion(manifest);
+              if (suggestion !== null) out.set(name, suggestion);
+              return;
+            } catch {
+              // 网络失败 → 换下一个镜像
+            }
+          }
+        }),
+      );
+      return out;
+    };
+    const officialLikeSearch = async (
+      base: string,
+      label: string,
+      source: 'official' | 'github',
+      onFail: () => Promise<void>,
+    ): Promise<void> => {
       try {
         // 官方是 cursor 翻页：一次拉到 offset+limit 再切片；搜索时多拉留出去重/过滤余量（上游单页上限约 200）
         const headroom = q !== '' ? limit * 2 : 0;
         const fetchLimit = Math.min(offset + limit + headroom, 200);
         const searchPart = q !== '' ? `search=${encodeURIComponent(q)}&` : '';
         const res = await fetch(
-          `${officialBase}/v0/servers?${searchPart}limit=${fetchLimit}`,
+          `${base}/v0/servers?${searchPart}limit=${fetchLimit}`,
           { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } },
         );
         if (!res.ok) {
-          failures.push(`官方 registry 返回 ${res.status}`);
-          await npmSearch();
+          failures.push(`${label} 返回 ${res.status}`);
+          await onFail();
           return;
         }
         const data = (await res.json()) as {
@@ -562,41 +632,153 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
         };
         const entries = (data.servers ?? []).map((e) => (e['server'] ?? e) as Record<string, unknown>);
         let candidates = dedupeSuggestions(
-          entries.map((e) => registryEntryToServerInput(e)).map((s) => ({ ...s, source: 'official' as const })),
+          entries.map((e) => registryEntryToServerInput(e)).map((s) => ({ ...s, source })),
         );
         if (q !== '') candidates = filterByRelevance(candidates, q);
         const total = data.metadata?.total;
         const page = candidates.slice(offset, offset + limit);
+        // 页内缺安装配置的条目 → 按名回查 npm 补 npx 建议；只补当前页以控制外呼量
+        const missing = page.filter((s) => s.suggestion === null).map((s) => s.name);
+        if (missing.length > 0) {
+          const backfilled = await npmManifestBackfill(missing);
+          for (const s of page) {
+            const fb = backfilled.get(s.name);
+            if (fb === undefined) continue;
+            s.suggestion = { ...fb, name: s.name }; // 展示名跟官方条目；npx 参数用 npm 包名
+            s.description = [s.description, '官方条目无安装配置，已按同名 npm 包回退']
+              .filter((x) => x !== '')
+              .join(' · ');
+          }
+        }
         const hasMore =
           total !== undefined
             ? offset + page.length < total
             : candidates.length >= offset + limit || entries.length >= fetchLimit;
         return sendJson(ctx.res, 200, {
           servers: page,
-          source: 'official',
+          source,
           ...(total !== undefined ? { total, totalPages: Math.ceil(total / limit) } : {}),
           hasMore,
         });
       } catch (err) {
-        failures.push(`官方 registry 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
-        await npmSearch();
+        failures.push(`${label} 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+        await onFail();
+      }
+    };
+    const officialSearch = (): Promise<void> =>
+      officialLikeSearch(officialBase, '官方 registry', 'official', npmSearch);
+    const githubSearch = (): Promise<void> =>
+      officialLikeSearch(GITHUB_REGISTRY, 'GitHub registry', 'github', officialSearch);
+
+    // —— 魔搭 ModelScope MCP 广场（国内源：PUT + JSON body，PageNumber 从 1 起；上游已做相关序） ——
+    const modelscopeSearch = async (): Promise<void> => {
+      try {
+        const pageSize = Math.min(Math.max(offset + limit, 20), 100);
+        const pageNumber = Math.floor(offset / pageSize) + 1;
+        const res = await fetch(MODELSCOPE_API, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ PageSize: pageSize, PageNumber: pageNumber, Query: q, Criterion: [] }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) throw new Error(`返回 ${res.status}`);
+        const data = (await res.json()) as Parameters<typeof modelscopeToSuggestions>[0];
+        // 上游可能返回同名的多个托管实例，按展示名去重避免 UI 重复卡片
+        const candidates = dedupeSuggestions(modelscopeToSuggestions(data));
+        const from = offset - (pageNumber - 1) * pageSize;
+        const servers = candidates.slice(from, from + limit);
+        const total = data.Data?.McpServer?.TotalCount;
+        return sendJson(ctx.res, 200, {
+          servers,
+          source: 'modelscope',
+          ...(total !== undefined ? { total, totalPages: Math.ceil(total / limit) } : {}),
+          hasMore: total !== undefined ? offset + servers.length < total : servers.length >= limit,
+        });
+      } catch (err) {
+        failures.push(`魔搭 ModelScope 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
       }
     };
 
+    // —— 百度 MCP World（国内源：GET，pn 从 0 起；仅元数据无安装配置 → 建议为 null 只做发现） ——
+    const baiduSearch = async (): Promise<void> => {
+      try {
+        const params = new URLSearchParams({
+          wd: q,
+          type: q === '' ? 'tag' : 'search',
+          pn: String(Math.floor(offset / limit)),
+          lg: 'zh',
+          pl: String(limit),
+        });
+        const res = await fetch(`${BAIDU_MCP_API}?${params}`, {
+          signal: AbortSignal.timeout(15_000),
+          headers: { accept: 'application/json' },
+        });
+        if (!res.ok) throw new Error(`返回 ${res.status}`);
+        const data = (await res.json()) as Parameters<typeof baiduMcpWorldToSuggestions>[0];
+        const servers = dedupeSuggestions(baiduMcpWorldToSuggestions(data));
+        const total = baiduMcpWorldTotal(data);
+        return sendJson(ctx.res, 200, {
+          servers,
+          source: 'baidu',
+          ...(total !== undefined ? { total, totalPages: Math.ceil(total / limit) } : {}),
+          hasMore: total !== undefined ? offset + servers.length < total : servers.length >= limit,
+        });
+      } catch (err) {
+        failures.push(`百度 MCP World 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+      }
+    };
+
+    // —— 静态目录三源（Cline/Docker/mcpm：整包拉取 + 进程内缓存，本地过滤分页） ——
+    const catalogSearch = async (
+      url: string,
+      source: 'cline' | 'docker' | 'mcpm',
+      label: string,
+      map: (data: never) => ReturnType<typeof clineCatalogToSuggestions>,
+      attempts = 1,
+    ): Promise<void> => {
+      try {
+        const data = await fetchCatalog(url, attempts);
+        let candidates = map(data as never);
+        if (q !== '') candidates = filterByRelevance(candidates, q);
+        const servers = candidates.slice(offset, offset + limit);
+        return sendJson(ctx.res, 200, {
+          servers,
+          source,
+          total: candidates.length,
+          totalPages: Math.max(1, Math.ceil(candidates.length / limit)),
+          hasMore: offset + servers.length < candidates.length,
+        });
+      } catch (err) {
+        failures.push(`${label} 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+      }
+    };
+    const clineSearch = (): Promise<void> =>
+      catalogSearch(CLINE_CATALOG, 'cline', 'Cline 市场', (d) => clineCatalogToSuggestions(d));
+    const dockerSearch = (): Promise<void> =>
+      catalogSearch(DOCKER_CATALOG, 'docker', 'Docker MCP 目录', (d) => dockerCatalogToSuggestions(d), 2);
+    const mcpmSearch = (): Promise<void> =>
+      catalogSearch(MCPM_REGISTRY, 'mcpm', 'mcpm 注册表', (d) => mcpmRegistryToSuggestions(d));
+
     if (q === '' && source === 'npm') {
-      return sendError(ctx.res, 400, 'npm 源需要搜索关键词（npm 没有可浏览的 server 目录）。请输入关键词，或选择官方 / Smithery 源。');
+      return sendError(ctx.res, 400, 'npm 源需要搜索关键词（npm 没有可浏览的 server 目录）。请输入关键词，或选择其他源。');
     }
     if (source === 'smithery') return void smitherySearch();
     if (source === 'npm') return void npmSearch();
+    if (source === 'modelscope') return void modelscopeSearch();
+    if (source === 'baidu') return void baiduSearch();
+    if (source === 'cline') return void clineSearch();
+    if (source === 'docker') return void dockerSearch();
+    if (source === 'mcpm') return void mcpmSearch();
+    if (source === 'github') return void githubSearch();
     await officialSearch();
-    // officialSearch/smitherySearch 失败时内部已尝试 npm；npm 也失败则在此兜底
+    // 各源失败时内部已尝试回退；全部失败则在此兜底
     if (!ctx.res.writableEnded) {
       sendError(
         ctx.res,
         502,
         q === ''
-          ? `无法从官方 registry 获取列表（${failures.join('；')}）。可稍后重试，或在搜索框输入关键词走 npm 回退。`
-          : `所有数据源均不可达（${failures.join('；')}）。官方 registry 可能需要网络代理。`,
+          ? `无法从 ${source} 源获取列表（${failures.join('；')}）。可稍后重试，或切换其他数据源。`
+          : `所有数据源均不可达（${failures.join('；')}）。国际源可能需要网络代理，国内源请检查网络。`,
       );
     }
   });

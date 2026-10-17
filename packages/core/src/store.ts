@@ -125,14 +125,16 @@ export function defaultConfig(): ManagerConfig {
 }
 
 /**
- * 数据目录解析优先级：构造参数 > AGENT_CONTROL_HOME（测试沙箱，兼容旧名 MCP_MANAGER_HOME）
- * > ~/.agent-control（若存在旧目录 ~/.mcp-manager 且新目录不存在，一次性整体迁移）
+ * 数据目录解析优先级：构造参数 > BEAVER_HOME（测试沙箱，兼容旧名 AGENT_CONTROL_HOME / MCP_MANAGER_HOME）
+ * > ~/.beaver（若存在旧目录 ~/.agent-control 或 ~/.mcp-manager 且新目录不存在，一次性整体迁移）
  */
 export function resolveHomeDir(explicit?: string): string {
   if (explicit) return explicit;
-  const env = process.env['AGENT_CONTROL_HOME'] ?? process.env['MCP_MANAGER_HOME'];
+  const env = process.env['BEAVER_HOME'] ?? process.env['AGENT_CONTROL_HOME'] ?? process.env['MCP_MANAGER_HOME'];
   if (env) return env;
-  return maybeMigrateHome(path.join(homedir(), '.mcp-manager'), path.join(homedir(), '.agent-control'));
+  const home = homedir();
+  const legacy = [path.join(home, '.agent-control'), path.join(home, '.mcp-manager')].find((p) => existsSync(p));
+  return maybeMigrateHome(legacy ?? path.join(home, '.agent-control'), path.join(home, '.beaver'));
 }
 
 /** 一次性整体迁移：旧目录存在且新目录不存在（或存在但为空，如被空跑创建）→ rename；

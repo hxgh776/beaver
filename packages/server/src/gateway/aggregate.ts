@@ -5,7 +5,7 @@ import {
   PingRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ServerDef } from '@agent-control/core';
+import type { ServerDef } from '@beaver/core';
 import { UpstreamManager } from './upstream.js';
 import type { Upstream } from './upstream.js';
 
@@ -44,7 +44,7 @@ export function createAggregateServer(mgr: UpstreamManager, opts: {
   filter?: (def: { id: string }) => boolean;
 }): Server {
   const server = new Server(
-    { name: 'agent-control', version: '0.1.0' },
+    { name: 'beaver', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
@@ -107,7 +107,7 @@ export function createAggregateServer(mgr: UpstreamManager, opts: {
     if (!isToolEnabled(entry.upstream.def, entry.originalName)) {
       record(false, `工具已停用: ${name}`);
       return {
-        content: [{ type: 'text', text: `工具 ${name} 已被停用（agent-control）` }],
+        content: [{ type: 'text', text: `工具 ${name} 已被停用（beaver）` }],
         isError: true,
       };
     }
@@ -133,7 +133,7 @@ export function createSingleServerServer(mgr: UpstreamManager, upstreamId: strin
   onCall: (record: CallRecord) => void;
 }): Server {
   const server = new Server(
-    { name: `agent-control:${upstreamId}`, version: '0.1.0' },
+    { name: `beaver:${upstreamId}`, version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
   const upstream = () => mgr.get(upstreamId);
@@ -152,7 +152,7 @@ export function createSingleServerServer(mgr: UpstreamManager, upstreamId: strin
     const started = Date.now();
     if (!isToolEnabled(u.def, name)) {
       return {
-        content: [{ type: 'text', text: `工具 ${name} 已被停用（agent-control）` }],
+        content: [{ type: 'text', text: `工具 ${name} 已被停用（beaver）` }],
         isError: true,
       };
     }

@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'agentcontrol_token';
+const TOKEN_KEY = 'beaver_token';
 const LEGACY_TOKEN_KEY = 'mcpmgr_token';
 
 export function getToken(): string {
@@ -74,17 +74,11 @@ export interface RuntimeTool {
   version?: string;
 }
 
-export interface InstallEvidence {
-  kind: 'binary' | 'program' | 'data';
-  path: string;
-}
-
 export interface AgentInfo {
   agentType: string;
   displayName: string;
+  /** 候选配置文件任一存在即视为已安装 */
   detected: boolean;
-  configExists: boolean;
-  installEvidence: InstallEvidence[];
   configPaths: string[];
   transports: string[];
   /** 有效绑定（直连 ∪ 分组包含） */
@@ -92,12 +86,6 @@ export interface AgentInfo {
   directServerIds: string[];
   groupIds: string[];
   syncState: { keyStates: { key: string; hash: string }[]; updatedAt: string } | null;
-}
-
-/** 安装判定分级：installed = 命令/默认安装位置命中（强证据）；data-only = 仅配置或用户数据残留；none = 一无所获 */
-export function agentInstallTier(a: Pick<AgentInfo, 'detected' | 'installEvidence'>): 'installed' | 'data-only' | 'none' {
-  if (a.installEvidence.some((e) => e.kind === 'binary' || e.kind === 'program')) return 'installed';
-  return a.detected ? 'data-only' : 'none';
 }
 
 export interface GroupInfo {
@@ -137,14 +125,14 @@ export interface RegistrySuggestion {
     gatewayMode: boolean;
   } | null;
   /** 结果来源（回退时可能与所选源不同） */
-  source?: 'official' | 'smithery' | 'npm';
-  /** 热度信号：npm=周下载量，Smithery=使用次数 */
+  source?: 'official' | 'github' | 'smithery' | 'npm' | 'modelscope' | 'baidu' | 'cline' | 'docker' | 'mcpm';
+  /** 热度信号：npm=周下载量，Smithery=使用次数，魔搭=调用量，百度=star */
   useCount?: number;
 }
 
 export interface RegistrySearchResult {
   servers: RegistrySuggestion[];
-  source?: 'official' | 'smithery' | 'npm';
+  source?: 'official' | 'github' | 'smithery' | 'npm' | 'modelscope' | 'baidu' | 'cline' | 'docker' | 'mcpm';
   total?: number;
   totalPages?: number;
   hasMore?: boolean;

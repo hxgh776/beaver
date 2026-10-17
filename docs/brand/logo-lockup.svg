@@ -1,23 +1,125 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="460" height="96" viewBox="0 0 460 96" role="img" aria-label="AgentControl">
-  <!-- Horizontal lockup, light backgrounds: mark + two-tone wordmark + tagline -->
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="96" viewBox="0 0 460 96" role="img" aria-label="Beaver">
+  <!-- Horizontal lockup, light backgrounds: beaver scene + wordmark + tagline -->
   <defs>
-    <linearGradient id="bg" x1="10" y1="4" x2="54" y2="60" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="80" y1="20" x2="432" y2="492" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#6366F1"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.16" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fur" x1="180" y1="90" x2="330" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B57C52"/>
+      <stop offset="1" stop-color="#8A5636"/>
+    </linearGradient>
+    <linearGradient id="tailg" x1="330" y1="370" x2="460" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C4E2E"/>
+      <stop offset="1" stop-color="#5E3820"/>
+    </linearGradient>
   </defs>
-  <g transform="translate(0,16)">
-    <rect width="64" height="64" rx="14.4" fill="url(#bg)"/>
-    <g stroke="#FFFFFF" stroke-width="5.6" stroke-linecap="round" fill="none">
-      <path d="M32 14 15.5 50.5"/>
-      <path d="M32 14 48.5 50.5"/>
-      <path d="M22 38h20"/>
+  <g transform="translate(0,16) scale(0.125)">
+<rect width="512" height="512" rx="115" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="115" fill="url(#glow)"/>
+
+  <!-- 云 -->
+  <g fill="#FFFFFF" opacity="0.22">
+    <ellipse cx="92" cy="86" rx="52" ry="18"/>
+    <ellipse cx="128" cy="72" rx="36" ry="14"/>
+    <ellipse cx="420" cy="130" rx="44" ry="15"/>
+  </g>
+
+  <!-- 远处水面 -->
+  <rect y="392" width="512" height="120" fill="#FFFFFF" opacity="0.10"/>
+
+  <!-- 坝：木堆 -->
+  <g>
+    <g fill="#8A5A34">
+      <rect x="20" y="404" width="200" height="34" rx="17" transform="rotate(-4 120 421)"/>
+      <rect x="8" y="436" width="240" height="36" rx="18"/>
+      <rect x="330" y="404" width="180" height="34" rx="17" transform="rotate(4 420 421)"/>
+      <rect x="300" y="436" width="210" height="36" rx="18"/>
     </g>
-    <circle cx="32" cy="14" r="5.2" fill="#FFFFFF"/>
-    <circle cx="37.5" cy="38" r="4.4" fill="#6366F1" stroke="#FFFFFF" stroke-width="2.6"/>
+    <g fill="#C8905C">
+      <circle cx="34" cy="454" r="17"/>
+      <circle cx="316" cy="454" r="18"/>
+    </g>
+    <g fill="#8A5A34">
+      <circle cx="34" cy="454" r="9"/>
+      <circle cx="316" cy="454" r="10"/>
+    </g>
+  </g>
+
+  <!-- 桨状尾巴（身后，右下） -->
+  <path d="M318 392 C 372 396 428 420 456 448 C 468 461 462 478 444 478 C 396 478 344 452 310 424 Z" fill="url(#tailg)"/>
+  <g stroke="#4A2A15" stroke-width="7" stroke-linecap="round" opacity="0.55" fill="none">
+    <path d="M352 414 C 366 432 384 448 404 458"/>
+    <path d="M388 408 C 402 424 420 438 438 446"/>
+    <path d="M336 428 C 350 444 366 456 384 464"/>
+  </g>
+
+  <!-- 身体 -->
+  <path d="M256 268 C 176 268 148 330 152 388 C 155 430 196 452 256 452 C 316 452 357 430 360 388 C 364 330 336 268 256 268 Z" fill="url(#fur)"/>
+  <!-- 肚皮 -->
+  <ellipse cx="256" cy="392" rx="62" ry="52" fill="#E8C9A4"/>
+
+  <!-- 脚 -->
+  <ellipse cx="210" cy="446" rx="34" ry="15" fill="#5E3820"/>
+  <ellipse cx="302" cy="446" rx="34" ry="15" fill="#5E3820"/>
+
+  <!-- 耳朵 -->
+  <circle cx="172" cy="120" r="30" fill="#9A6B4F"/>
+  <circle cx="172" cy="120" r="14" fill="#5E3820"/>
+  <circle cx="340" cy="120" r="30" fill="#9A6B4F"/>
+  <circle cx="340" cy="120" r="14" fill="#5E3820"/>
+
+  <!-- 头 -->
+  <circle cx="256" cy="206" r="112" fill="url(#fur)"/>
+  <!-- 脸颊绒毛 -->
+  <ellipse cx="256" cy="262" rx="74" ry="56" fill="#D9B08C"/>
+
+  <!-- 眼睛 -->
+  <circle cx="212" cy="184" r="15" fill="#33200F"/>
+  <circle cx="300" cy="184" r="15" fill="#33200F"/>
+  <circle cx="217" cy="178" r="5" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="305" cy="178" r="5" fill="#FFFFFF" opacity="0.9"/>
+  <!-- 腮红 -->
+  <ellipse cx="164" cy="228" rx="16" ry="10" fill="#C98A5C" opacity="0.55"/>
+  <ellipse cx="348" cy="228" rx="16" ry="10" fill="#C98A5C" opacity="0.55"/>
+
+  <!-- 鼻子 -->
+  <path d="M256 210 C 274 210 284 220 284 230 C 284 242 271 248 256 248 C 241 248 228 242 228 230 C 228 220 238 210 256 210 Z" fill="#33200F"/>
+  <ellipse cx="249" cy="220" rx="6" ry="3.6" fill="#FFFFFF" opacity="0.35"/>
+
+  <!-- 门牙 -->
+  <rect x="234" y="256" width="21" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="257" y="256" width="21" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="254" y="256" width="4" height="58" fill="#D9C4AC" opacity="0.9"/>
+
+  <!-- 抱着的树枝 -->
+  <g transform="rotate(-9 256 330)">
+    <rect x="110" y="318" width="292" height="26" rx="13" fill="#A9743F"/>
+    <rect x="150" y="296" width="12" height="26" rx="6" fill="#8A5A34" transform="rotate(28 156 309)"/>
+    <rect x="352" y="298" width="12" height="26" rx="6" fill="#8A5A34" transform="rotate(-24 358 311)"/>
+  </g>
+  <!-- 爪子 -->
+  <circle cx="186" cy="330" r="30" fill="#9A6B4F"/>
+  <circle cx="326" cy="318" r="30" fill="#9A6B4F"/>
+  <g stroke="#7C4E2E" stroke-width="5" stroke-linecap="round">
+    <path d="M176 322 v16"/>
+    <path d="M188 320 v18"/>
+    <path d="M200 322 v16"/>
+    <path d="M316 310 v16"/>
+    <path d="M328 308 v18"/>
+    <path d="M340 310 v16"/>
+  </g>
+
+  <!-- 前景水波 -->
+  <path d="M0 470 Q 42 452 85 470 T 170 470 T 256 470 T 341 470 T 426 470 T 512 470 V512 H0 Z" fill="#FFFFFF" opacity="0.20"/>
+  <path d="M0 492 Q 42 478 85 492 T 170 492 T 256 492 T 341 492 T 426 492 T 512 492 V512 H0 Z" fill="#FFFFFF" opacity="0.30"/>
   </g>
   <text x="84" y="51" font-family="Inter,'Segoe UI',system-ui,-apple-system,sans-serif" font-size="34" font-weight="700" letter-spacing="-0.8">
-    <tspan fill="#0F172A">Agent</tspan><tspan fill="#6366F1">Control</tspan>
+    <tspan fill="#0F172A">Bea</tspan><tspan fill="#6366F1">ver</tspan>
   </text>
-  <text x="85" y="73" font-family="Inter,'Segoe UI',system-ui,-apple-system,sans-serif" font-size="13" fill="#64748B">One control plane for MCP servers, providers &amp; skills</text>
+  <text x="85" y="73" font-family="Inter,'Segoe UI',system-ui,-apple-system,sans-serif" font-size="13" fill="#64748B">Every agent's gear. One dam.</text>
 </svg>

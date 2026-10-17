@@ -21,7 +21,7 @@ const common = {
   splitting: true,
   sourcemap: false,
   logLevel: 'info',
-  // 只外置 Node 内建模块；@agent-control/* 与其余依赖全部内联
+  // 只外置 Node 内建模块；@beaver/* 与其余依赖全部内联
   external: ['node:*'],
   // 工作区包映射到源码（tsconfig.bundle.json 的 paths）——内联 dist 产物会自带
   // `import { createRequire } from "node:module"`，与 banner 注入的绑定重复声明

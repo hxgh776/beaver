@@ -9,7 +9,7 @@ import { chromium } from '@playwright/test';
 
 const outDir = new URL('../docs/screenshots', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
-const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-shot-'));
+const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-shot-'));
 const serverDist = new URL('../packages/server/dist/index.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const port = 6291;
 const child = spawn(
@@ -76,7 +76,11 @@ await page.waitForTimeout(400);
 await page.screenshot({ path: path.join(outDir, 'servers.png') });
 
 await page.getByTestId('tab-discovery').click();
-await page.waitForTimeout(2500);
+// 只等结果卡片（div）——搜索框 input 的 testid 也是 registry- 前缀，不能放行；无外网时等错误提示兜底
+await page
+  .waitForSelector('div[data-testid^="registry-"], p.text-amber-600', { timeout: 30000 })
+  .catch(() => {});
+await page.waitForTimeout(400);
 await page.screenshot({ path: path.join(outDir, 'discovery.png') });
 
 await page.getByTestId('tab-sync').click();

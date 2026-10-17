@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { ProviderApp, ProviderProfileDTO, ProviderPresetDTO } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Modal, Spinner, AddMenu, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Modal, Segmented, Spinner, AddMenu, inputCls, useToast } from '../ui';
 
 const APPS: Array<{ app: ProviderApp; label: string; hint: string }> = [
   { app: 'claude-code', label: 'Claude Code', hint: '写入 ~/.claude/settings.json（只动供应商键，hooks/permissions 不碰）' },
@@ -53,22 +53,18 @@ export function ProvidersPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2" data-testid="provider-app-tabs">
-        {APPS.map((a) => (
-          <button
-            key={a.app}
-            data-testid={`provider-app-${a.app}`}
-            onClick={() => setApp(a.app)}
-            className={`h-9 rounded-lg px-4 text-sm font-medium transition-all ${
-              app === a.app
-                ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/25'
-                : 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-            }`}
-          >
-            {a.label}
-          </button>
-        ))}
+        <Segmented
+          value={app}
+          onChange={setApp}
+          options={APPS.map((a) => ({
+            value: a.app,
+            testId: `provider-app-${a.app}`,
+            title: a.hint,
+            label: a.label,
+          }))}
+        />
         <Btn kind="primary" testId="btn-provider-new" className="ml-auto" onClick={() => setCreating(true)}>
           新建供应商
         </Btn>

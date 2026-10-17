@@ -30,7 +30,7 @@ async function api(
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillapi-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillapi-'));
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();
   base = daemon.baseUrl;

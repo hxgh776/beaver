@@ -1,26 +1,87 @@
 @import 'tailwindcss';
 
-/* —— 设计令牌：品牌色（靛蓝-紫）、阴影、动效 —— */
+/* —— 字阶（全站唯一允许的五档，对应 awesome-design-md/claude DESIGN.md 的产品级层级）——
+   20px 页面 h1（衬线 display）· 16px 卡片标题 · 14px 正文/卡内条目名/按钮 · 12px 说明与标签 · 11px 仅徽章。
+   新增样式从这里取档，不要再出现 text-[13px] / text-[15px] 这类游离值。 */
+
+/* —— 设计令牌：Claude 风格（暖米色画布 · 珊瑚主色 · 衬线标题 · 深暖色代码面板）——
+   依据 awesome-design-md/design-md/claude/DESIGN.md 重映射整套色阶：
+   slate → 暖灰阶（canvas #faf9f5 → ink #141413），brand → Anthropic 珊瑚 #cc785c，
+   emerald/rose/amber → 语义色 success/warning/error。冷色调（violet）不再使用。 */
 @theme {
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-200: #c7d2fe;
-  --color-brand-300: #a5b4fc;
-  --color-brand-400: #818cf8;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
-  --color-brand-800: #3730a3;
-  --color-brand-900: #312e81;
-  --color-brand-950: #1e1b4b;
+  /* 品牌色：Anthropic 珊瑚（500 主色，600 悬停加深，700 按压态 #a9583e） */
+  --color-brand-50: #fbf3ee;
+  --color-brand-100: #f7e5dc;
+  --color-brand-200: #f0cdbc;
+  --color-brand-300: #e5ad92;
+  --color-brand-400: #d88e6d;
+  --color-brand-500: #cc785c;
+  --color-brand-600: #b8664b;
+  --color-brand-700: #a9583e;
+  --color-brand-800: #8a473e;
+  --color-brand-900: #6f3c35;
+  --color-brand-950: #3f1f1a;
+
+  /* 中性色：暖灰阶（替代冷 slate） */
+  --color-slate-50: #faf9f5;
+  --color-slate-100: #f2ecdf;
+  --color-slate-200: #e6ded1;
+  --color-slate-300: #d8cec1;
+  --color-slate-400: #8e8b82;
+  --color-slate-500: #6c6a64;
+  --color-slate-600: #56534b;
+  --color-slate-700: #3d3d3a;
+  --color-slate-800: #252523;
+  --color-slate-900: #141413;
+  --color-slate-950: #181715;
+
+  /* 语义色：success #5db872 */
+  --color-emerald-50: #eef6f0;
+  --color-emerald-100: #dcede1;
+  --color-emerald-200: #c1e3c9;
+  --color-emerald-300: #97d2a5;
+  --color-emerald-400: #6fc186;
+  --color-emerald-500: #5db872;
+  --color-emerald-600: #47a05c;
+  --color-emerald-700: #3a8b4d;
+  --color-emerald-800: #307441;
+  --color-emerald-900: #296037;
+
+  /* 语义色：error #c64545 */
+  --color-rose-50: #f9eded;
+  --color-rose-100: #f3dcdc;
+  --color-rose-200: #eac2c2;
+  --color-rose-300: #dd9f9f;
+  --color-rose-400: #d47070;
+  --color-rose-500: #c64545;
+  --color-rose-600: #b23b3b;
+  --color-rose-700: #993333;
+  --color-rose-800: #7f2b2b;
+  --color-rose-900: #6a2525;
+
+  /* 语义色：warning #d4a017（400 保留琥珀点缀 #e8a55a） */
+  --color-amber-50: #fbf3e0;
+  --color-amber-100: #f7e8c4;
+  --color-amber-200: #f2d9a2;
+  --color-amber-300: #ecc778;
+  --color-amber-400: #e8a55a;
+  --color-amber-500: #d4a017;
+  --color-amber-600: #b8890f;
+  --color-amber-700: #9c750d;
+  --color-amber-800: #7d5e10;
+  --color-amber-900: #614a0d;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  /* 展示层衬线：标题专用（Claude 的 Copernicus 对应的中文衬线近似） */
+  --font-display: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', Georgia,
+    'Times New Roman', serif;
   --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'SF Mono', Menlo, monospace;
 
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.05);
-  --shadow-card-hover: 0 2px 4px rgb(15 23 42 / 0.04), 0 12px 28px -8px rgb(15 23 42 / 0.12);
-  --shadow-pop: 0 4px 8px -2px rgb(15 23 42 / 0.06), 0 24px 56px -12px rgb(15 23 42 / 0.28);
+  /* 暖调阴影（spec: 0 1px 3px rgba(20,20,19,0.08) 一族） */
+  --shadow-card: 0 1px 2px rgb(64 58 50 / 0.04), 0 1px 3px rgb(64 58 50 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(64 58 50 / 0.04), 0 12px 28px -8px rgb(64 58 50 / 0.16);
+  --shadow-pop: 0 4px 8px -2px rgb(64 58 50 / 0.07), 0 24px 56px -12px rgb(64 58 50 / 0.26);
 
   /* 不用 both 填充：静止态必须可见，时间线被节流时最坏情况是无动画而非隐形 */
   --animate-fade-in: fade-in 0.2s ease-out;
@@ -57,14 +118,8 @@
 body {
   font-family: var(--font-sans);
   @apply text-slate-800 antialiased;
-  /* 顶部一抹品牌色光晕，避免纯灰底的呆板 */
-  background:
-    radial-gradient(
-      1100px 400px at 55% -120px,
-      color-mix(in oklab, var(--color-brand-500) 8%, transparent),
-      transparent 70%
-    ),
-    var(--color-slate-50);
+  /* 暖米色画布即留白（spec：cream canvas，不用冷灰/纯白） */
+  background: var(--color-slate-50);
 }
 
 ::selection {
@@ -72,7 +127,7 @@ body {
 }
 
 input[type='checkbox'] {
-  accent-color: var(--color-brand-600);
+  accent-color: var(--color-brand-500);
 }
 
 /* 无障碍：偏好减弱动效时全部动画瞬时完成 */

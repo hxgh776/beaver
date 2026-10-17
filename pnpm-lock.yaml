@@ -29,16 +29,19 @@ importers:
 
   e2e:
     devDependencies:
+      '@beaver/server':
+        specifier: workspace:*
+        version: link:../packages/server
       '@playwright/test':
         specifier: ^1.49.0
         version: 1.64.0
 
   packages/cli:
     dependencies:
-      '@agent-control/core':
+      '@beaver/core':
         specifier: workspace:*
         version: link:../core
-      '@agent-control/server':
+      '@beaver/server':
         specifier: workspace:*
         version: link:../server
       commander:
@@ -70,7 +73,7 @@ importers:
 
   packages/server:
     dependencies:
-      '@agent-control/core':
+      '@beaver/core':
         specifier: workspace:*
         version: link:../core
       '@modelcontextprotocol/sdk':

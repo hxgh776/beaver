@@ -5,10 +5,10 @@
     "paths": {
       // esbuild 打包时把工作区包映射到源码：内联 server/core 的 dist 产物会自带
       // `import { createRequire } from "node:module"`，与 bundle banner 的注入重复声明
-      "@agent-control/core": ["../core/src/index.ts"],
-      "@agent-control/core/*": ["../core/src/*"],
-      "@agent-control/server": ["../server/src/index.ts"],
-      "@agent-control/server/*": ["../server/src/*"]
+      "@beaver/core": ["../core/src/index.ts"],
+      "@beaver/core/*": ["../core/src/*"],
+      "@beaver/server": ["../server/src/index.ts"],
+      "@beaver/server/*": ["../server/src/*"]
     }
   }
 }

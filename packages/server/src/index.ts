@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  console.log(`agent-control daemon v${DAEMON_VERSION}`);
+  console.log(`beaver daemon v${DAEMON_VERSION}`);
   console.log(`  API/UI : ${daemon.baseUrl}`);
   console.log(`  MCP    : ${daemon.baseUrl}/mcp (gateway 启动后可用)`);
   console.log(`  home   : ${daemon.store.homeDir}`);

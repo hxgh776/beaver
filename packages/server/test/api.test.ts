@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Daemon } from '../src/daemon.js';
-import { Store } from '@agent-control/core';
+import { Store } from '@beaver/core';
 
 let sandbox: string;
 let daemon: Daemon;
@@ -29,7 +29,7 @@ async function api(
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-apitest-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-apitest-'));
   // 沙箱纪律：agent 配置也必须重定向，绝不触碰真实 agent 配置
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();
@@ -38,6 +38,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await daemon.stop();
   await fs.rm(sandbox, { recursive: true, force: true });
 });
@@ -212,5 +213,88 @@ describe('store round-trip through daemon', () => {
     await api('POST', '/api/servers', { name: 'persist', transport: 'stdio', command: 'node' });
     const reloaded = await new Store(sandbox).load();
     expect(reloaded.servers.map((s) => s.id)).toContain('persist');
+  });
+});
+
+// stub 只拦上游 registry：测试自身打向 daemon 的 fetch 走 globalThis 透传
+function stubUpstream(map: Array<{ match: (url: string) => boolean; body: unknown; status?: number }>): void {
+  const real = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = String(input);
+      const hit = map.find((m) => m.match(url));
+      if (hit) return new Response(JSON.stringify(hit.body), { status: hit.status ?? 200 });
+      return real(input, init);
+    }) as unknown as typeof fetch,
+  );
+}
+
+describe('registry 搜索：官方条目 MCPB 缺安装配置 → npm 同名回退；npm 源相关性过滤', () => {
+  const officialMcpbEntry = {
+    servers: [
+      {
+        server: {
+          name: 'io.github.DeusData/codebase-memory-mcp',
+          title: 'Codebase Memory',
+          description: 'Persistent codebase knowledge graph.',
+          version: '0.1.3',
+          packages: [
+            { registryType: 'mcpb', identifier: 'https://github.com/x/y/releases/download/v0.1.3/y-win.zip', transport: { type: 'stdio' } },
+          ],
+        },
+      },
+    ],
+    metadata: { total: 1 },
+  };
+
+  it('官方条目仅 mcpb 包 → 按名回查 npm 补 npx 建议，描述附回退说明', async () => {
+    stubUpstream([
+      { match: (u) => u.startsWith('https://registry.modelcontextprotocol.io/v0/servers'), body: officialMcpbEntry },
+      { match: (u) => u.endsWith('/codebase-memory-mcp/latest'), body: { name: 'codebase-memory-mcp', bin: { 'codebase-memory-mcp': 'bin.js' } } },
+    ]);
+    const res = await api('GET', '/api/registry/search?q=codebase-memory-mcp&limit=20&offset=0&source=official');
+    expect(res.status).toBe(200);
+    const servers = res.data.servers as Array<Record<string, unknown>>;
+    expect(servers).toHaveLength(1);
+    expect(servers[0]!['suggestion']).toMatchObject({
+      name: 'codebase-memory-mcp',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', 'codebase-memory-mcp'],
+      gatewayMode: true,
+    });
+    expect(String(servers[0]!['description'])).toContain('npm 包回退');
+  });
+
+  it('npm 无同名包（404）→ suggestion 保持 null，不出假建议', async () => {
+    stubUpstream([
+      { match: (u) => u.startsWith('https://registry.modelcontextprotocol.io/v0/servers'), body: officialMcpbEntry },
+      { match: (u) => u.endsWith('/codebase-memory-mcp/latest'), body: { error: 'Not Found' }, status: 404 },
+    ]);
+    const res = await api('GET', '/api/registry/search?q=codebase-memory-mcp&limit=20&offset=0&source=official');
+    expect(res.status).toBe(200);
+    const servers = res.data.servers as Array<Record<string, unknown>>;
+    expect(servers[0]!['suggestion']).toBeNull();
+  });
+
+  it('npm 源：相关性过滤生效，同名精确包排第一（不被高下载模糊匹配埋掉）', async () => {
+    stubUpstream([
+      {
+        match: (u) => u.includes('registry.npmjs.org/-/v1/search'),
+        body: {
+          total: 3,
+          objects: [
+            { package: { name: '@better-auth/memory-adapter', description: 'Memory adapter' }, downloads: { weekly: 11054730 } },
+            { package: { name: 'codebase-memory-mcp', description: 'Fast code intelligence', version: '0.12.1' }, downloads: { weekly: 8008 } },
+            { package: { name: 'mongodb-memory-server', description: 'MongoDB in-memory' }, downloads: { weekly: 2164713 } },
+          ],
+        },
+      },
+    ]);
+    const res = await api('GET', '/api/registry/search?q=codebase-memory-mcp&limit=20&offset=0&source=npm');
+    expect(res.status).toBe(200);
+    const servers = res.data.servers as Array<{ name: string }>;
+    expect(servers.map((s) => s.name)).toEqual(['codebase-memory-mcp']);
   });
 });

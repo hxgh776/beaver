@@ -2,8 +2,11 @@ import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { SkillCollectionReport, SkillSearchResult, SkillUpdateReport, SkillWithStatus } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, Icon, Spinner } from '../ui';
+import { Badge, Btn, Card, ConfirmDialog, Icon, Pager, Segmented, Spinner } from '../ui';
 import { useToast } from '../ui';
+
+/** 已安装 skill 卡片分页：lg 2 列 × 2 行，配标签行右侧的数字分页 */
+const INSTALLED_PAGE_SIZE = 4;
 
 /** skill 投影支持的 agent 展示名（与 core SKILL_AGENT_DIRS 对应；未知类型回退原值） */
 const SKILL_AGENT_LABEL: Record<string, string> = {
@@ -43,6 +46,7 @@ export function SkillsPage() {
   const zipInput = useRef<HTMLInputElement>(null);
   const [enableOnInstall, setEnableOnInstall] = useState(true);
   const [tab, setTab] = useState<TabKey>('installed');
+  const [installedPage, setInstalledPage] = useState(0);
 
   const skills = useQuery({
     queryKey: ['skills'],
@@ -63,7 +67,8 @@ export function SkillsPage() {
     setSearching(true);
     try {
       const res = await api.get<SkillSearchResult>(
-        `/api/skills/search?q=${encodeURIComponent(kw)}&limit=20&offset=0`,
+        // 12 条（3 列 × 4 行）：结果区一屏放下，与 MCP 发现页同规格
+        `/api/skills/search?q=${encodeURIComponent(kw)}&limit=12&offset=0`,
       );
       setSearchResult(res);
       setTab('search'); // 搜完直接展示结果，不用再手动切 Tab
@@ -143,6 +148,28 @@ export function SkillsPage() {
     onError: fail,
   });
 
+  // 卡片级批量分发：只对与目标状态不一致的 agent 逐个 toggle（服务端幂等，重复点安全）
+  const toggleAll = useMutation({
+    mutationFn: async (p: { id: string; enabled: boolean; agentTypes: string[] }) => {
+      const preserved: string[] = [];
+      for (const agentType of p.agentTypes) {
+        const res = await api.post<{ preserved?: string }>(`/api/skills/${p.id}/toggle`, {
+          agentType,
+          enabled: p.enabled,
+        });
+        if (res.preserved) preserved.push(`${res.preserved}（${agentType}）`);
+      }
+      return { changed: p.agentTypes.length, preserved };
+    },
+    onSuccess: (res) => {
+      if (res.changed > 0 && res.preserved.length > 0) {
+        toast.err(`这些目标目录被修改过，为保护用户内容未删除：${res.preserved.join('、')}`);
+      }
+      invalidate();
+    },
+    onError: fail,
+  });
+
   const update = useMutation({
     mutationFn: (id: string) => api.post<{ skill: SkillWithStatus }>(`/api/skills/${id}/update`),
     onSuccess: (res) => {
@@ -189,6 +216,9 @@ export function SkillsPage() {
   };
 
   const results = searchResult?.skills ?? [];
+  const installedTotalPages = Math.max(1, Math.ceil(installed.length / INSTALLED_PAGE_SIZE));
+  const safeInstalledPage = Math.min(installedPage, installedTotalPages - 1);
+  const pageInstalled = installed.slice(safeInstalledPage * INSTALLED_PAGE_SIZE, (safeInstalledPage + 1) * INSTALLED_PAGE_SIZE);
   const firstRowOfRepo = useMemo(() => {
     const m = new Map<string, string>(); // repo → 首个结果行的 key
     for (const s of results) {
@@ -198,7 +228,7 @@ export function SkillsPage() {
   }, [searchResult]);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Btn kind="primary" testId="btn-skills-updates" disabled={checkUpdates.isPending} onClick={() => checkUpdates.mutate()}>
           {checkUpdates.isPending ? <Spinner className="h-4 w-4" /> : '检查更新'}
@@ -272,30 +302,35 @@ export function SkillsPage() {
           </Btn>
         </div>
 
-        <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-            <button
-              type="button"
-              data-testid="skills-tab-installed"
-              onClick={() => setTab('installed')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                tab === 'installed' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              已安装 {installed.length > 0 && <span className="tabular-nums">{installed.length}</span>}
-            </button>
-            <button
-              type="button"
-              data-testid="skills-tab-search"
-              disabled={searchResult === null}
-              onClick={() => setTab('search')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
-                tab === 'search' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              搜索结果{results.length > 0 && <span className="tabular-nums"> {results.length}</span>}
-            </button>
-          </div>
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <Segmented
+            value={tab}
+            onChange={setTab}
+            options={[
+              {
+                value: 'installed',
+                testId: 'skills-tab-installed',
+                label: (
+                  <>
+                    已安装{installed.length > 0 && <span className="ml-1 tabular-nums">{installed.length}</span>}
+                  </>
+                ),
+              },
+              {
+                value: 'search',
+                testId: 'skills-tab-search',
+                disabled: searchResult === null,
+                label: (
+                  <>
+                    搜索结果{results.length > 0 && <span className="ml-1 tabular-nums">{results.length}</span>}
+                  </>
+                ),
+              },
+            ]}
+          />
+          {tab === 'installed' && installedTotalPages > 1 && (
+            <Pager page={safeInstalledPage} totalPages={installedTotalPages} onPage={setInstalledPage} />
+          )}
           {tab === 'search' && searchResult !== null && (
             <Btn small onClick={clearSearch}>
               清空搜索
@@ -303,7 +338,7 @@ export function SkillsPage() {
           )}
         </div>
 
-        <div className="mt-4">
+        <div className="mt-3">
           {tab === 'installed' ? (
             installed.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
@@ -311,14 +346,22 @@ export function SkillsPage() {
                 <p className="text-sm text-slate-400">还没有安装任何 skill——用上面的搜索或「安装本地 ZIP」开始，SKILL.md 是唯一的准入条件。</p>
               </div>
             ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {installed.map((s) => (
+              <div className="grid gap-2.5 lg:grid-cols-2">
+                {pageInstalled.map((s) => (
                   <InstalledSkillCard
                     key={s.id}
                     s={s}
                     togglePending={toggle.isPending}
+                    toggleAllPending={toggleAll.isPending}
                     updatePending={update.isPending}
                     onToggle={(agentType, enabled) => toggle.mutate({ id: s.id, agentType, enabled })}
+                    onToggleAll={(enabled) =>
+                      toggleAll.mutate({
+                        id: s.id,
+                        enabled,
+                        agentTypes: s.targets.filter((t) => t.enabled !== enabled).map((t) => t.agentType),
+                      })
+                    }
                     onUpdate={() => update.mutate(s.id)}
                     onRemove={() => setRemoving(s)}
                   />
@@ -372,12 +415,14 @@ export function SkillsPage() {
   );
 }
 
-/** 已安装 skill 卡片：元信息 + 分发 agent 芯片（点芯片即切换启用） + 操作 */
+/** 已安装 skill 卡片：元信息 + 分发 agent 芯片（点芯片即切换启用，支持全选/清空） + 操作 */
 function InstalledSkillCard(props: {
   s: SkillWithStatus;
   togglePending: boolean;
+  toggleAllPending: boolean;
   updatePending: boolean;
   onToggle: (agentType: string, enabled: boolean) => void;
+  onToggleAll: (enabled: boolean) => void;
   onUpdate: () => void;
   onRemove: () => void;
 }) {
@@ -394,14 +439,36 @@ function InstalledSkillCard(props: {
         {s.installs !== undefined && <Badge tone="gray">{s.installs} 安装</Badge>}
       </div>
       {s.description && <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{s.description}</div>}
-      <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory}>
+      <div className="mt-1 truncate font-mono text-xs text-slate-400" title={s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory}>
         {s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory} · #{s.contentHash.slice(0, 8)}
       </div>
 
       <div className="mt-3" data-testid={`skill-targets-${s.id}`}>
         <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">分发到 Agent</span>
-          <span className="text-[11px] tabular-nums text-slate-400">{enabledCount}/{s.targets.length}</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-400">分发到 Agent</span>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid={`skill-all-${s.id}`}
+              disabled={props.toggleAllPending || enabledCount === s.targets.length}
+              title="分发到全部支持 agent"
+              onClick={() => props.onToggleAll(true)}
+              className="text-xs text-slate-400 transition-colors hover:text-brand-600 disabled:pointer-events-none disabled:opacity-40"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              data-testid={`skill-none-${s.id}`}
+              disabled={props.toggleAllPending || enabledCount === 0}
+              title="停用全部分发（我们自己的投影会删除，用户改过的目录保留）"
+              onClick={() => props.onToggleAll(false)}
+              className="text-xs text-slate-400 transition-colors hover:text-slate-600 disabled:pointer-events-none disabled:opacity-40"
+            >
+              清空
+            </button>
+            <span className="text-xs tabular-nums text-slate-400">{enabledCount}/{s.targets.length}</span>
+          </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {s.targets.map((t) => {
@@ -488,7 +555,7 @@ function SearchResultCard(props: {
           <Badge tone="blue">同仓库已装 {props.repoInstalledCount} 个</Badge>
         ) : null}
       </div>
-      <div className="mt-0.5 truncate font-mono text-[11px] text-slate-400" title={`${s.repo}@${s.branch}`}>
+      <div className="mt-0.5 truncate font-mono text-xs text-slate-400" title={`${s.repo}@${s.branch}`}>
         {s.repo}@{s.branch}
       </div>
       <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">

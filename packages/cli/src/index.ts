@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import { Store } from '@agent-control/core';
-import { runBridgeStdio } from '@agent-control/server/gateway/bridge';
+import { autostartInstall, autostartIsInstalled, autostartUninstall } from './autostart.js';
+import { Store } from '@beaver/core';
+import { runBridgeStdio } from '@beaver/server/gateway/bridge';
 import {
   isPidAlive,
   killTree,
@@ -8,14 +9,14 @@ import {
   removePidFile,
   resolveDaemonEntry,
   spawnDetached,
-} from '@agent-control/server/process';
+} from '@beaver/server/process';
 
 const program = new Command();
-program.name('actl').description('Agent Control——本地 Agent 能力总控台').version('0.1.0');
+program.name('dam').description('Beaver（河狸）——本地 Agent 能力总控台').version('0.1.0');
 
 let homeOverride: string | undefined;
 program
-  .option('--home <dir>', '数据目录（缺省 ~/.agent-control）')
+  .option('--home <dir>', '数据目录（缺省 ~/.beaver）')
   .hook('preAction', (cmd) => {
     homeOverride = cmd.opts<{ home?: string }>().home;
   });
@@ -43,7 +44,7 @@ async function api<T>(
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
-    throw new Error(`daemon 未运行（${base}），请先执行 actl start`);
+    throw new Error(`daemon 未运行（${base}），请先执行 dam start`);
   }
   const data = (await res.json()) as T;
   return { status: res.status, data };
@@ -88,7 +89,7 @@ program
       }
       await new Promise((r) => setTimeout(r, 200));
     }
-    fail('daemon 启动超时，请查看日志: ~/.agent-control/logs/daemon.log');
+    fail('daemon 启动超时，请查看日志: ~/.beaver/logs/daemon.log');
   });
 
 program
@@ -123,7 +124,7 @@ servers
   .action(async () => {
     const { data } = await api<{ servers: Array<Record<string, unknown>> }>('GET', '/api/servers');
     if (data.servers.length === 0) {
-      console.log('（空）先用 actl import 或 servers add 添加');
+      console.log('（空）先用 dam import 或 servers add 添加');
       return;
     }
     for (const s of data.servers) {
@@ -194,7 +195,7 @@ program
     }
     if (!opts.all) {
       // 未指定 --all 时仅预览
-      console.log('\n（预览模式，执行 actl import --all 以导入）');
+      console.log('\n（预览模式，执行 dam import --all 以导入）');
       return;
     }
     const { data: added } = await api<{ added: Array<{ id: string }> }>('POST', '/api/import', {
@@ -243,7 +244,7 @@ program
       if (idx > 0) headers[kv.slice(0, idx)] = kv.slice(idx + 1);
     }
     if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
-    console.error(`[actl bridge] → ${url}`);
+    console.error(`[dam bridge] → ${url}`);
     await runBridgeStdio({
       url,
       ...(Object.keys(headers).length > 0 ? { headers } : {}),
@@ -266,6 +267,30 @@ for (const action of ['start', 'stop'] as const) {
       console.log(data.running ? `网关已启动: http://127.0.0.1:${data.port}/mcp` : '网关已停止');
     });
 }
+
+const autostart = program.command('autostart').description('开机自启 daemon（登录时静默拉起，start 幂等）');
+autostart
+  .command('on')
+  .description('安装开机自启（Windows: HKCU Run 键；macOS: LaunchAgent；Linux: systemd user unit）')
+  .action(async () => {
+    const cmdLine = autostartInstall(homeOverride);
+    console.log('已安装开机自启，下次登录自动拉起 daemon');
+    console.log(`  ${cmdLine}`);
+    console.log('  撤销: dam autostart off');
+  });
+autostart
+  .command('off')
+  .description('移除开机自启')
+  .action(async () => {
+    autostartUninstall();
+    console.log('已移除开机自启');
+  });
+autostart
+  .command('status')
+  .description('查看自启安装状态')
+  .action(async () => {
+    console.log(autostartIsInstalled() ? '已安装' : '未安装（dam autostart on 安装）');
+  });
 
 program.parseAsync(process.argv).catch((err) => {
   if (err.message !== 'exit') console.error(err);

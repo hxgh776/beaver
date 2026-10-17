@@ -24,7 +24,7 @@ const fixturesRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fi
 let sandbox: string;
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-ad-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-ad-'));
 });
 
 afterEach(async () => {

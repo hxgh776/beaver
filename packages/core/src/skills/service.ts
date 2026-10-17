@@ -119,7 +119,7 @@ export class SkillsService {
   ): Promise<InstalledSkill> {
     const { owner, name, branch: explicitBranch } = validateRepoRef(repo, opts.branch ?? 'main');
     const branch = explicitBranch ?? (await this.resolveBranch(owner, name));
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillzip-'));
     try {
       const { sourceDir, rootName } = await this.fetchAndLocate(tmp, owner, name, branch, opts.skill);
       const row = await this.admit({
@@ -140,7 +140,7 @@ export class SkillsService {
     zip: Buffer,
     opts: { skill?: string; enableFor?: SkillAgentType[] } = {},
   ): Promise<InstalledSkill> {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillzip-'));
     try {
       await extractZip(zip, tmp);
       const rootName = await singleRootDir(tmp);
@@ -168,7 +168,7 @@ export class SkillsService {
   ): Promise<CollectionInstallReport> {
     const { owner, name, branch: explicitBranch } = validateRepoRef(repo, opts.branch ?? 'main');
     const branch = explicitBranch ?? (await this.resolveBranch(owner, name));
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillzip-'));
     try {
       const zip = await downloadZip(githubArchiveUrl(owner, name, branch));
       const extractDir = path.join(tmp, 'x');
@@ -196,7 +196,7 @@ export class SkillsService {
     zip: Buffer,
     opts: { enableFor?: SkillAgentType[] } = {},
   ): Promise<CollectionInstallReport> {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillzip-'));
     try {
       await extractZip(zip, tmp);
       const rootName = await singleRootDir(tmp);
@@ -429,7 +429,7 @@ export class SkillsService {
       const branch = key.slice(at + 1);
       let tmpRoot: string | null = null;
       try {
-        tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillchk-'));
+        tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillchk-'));
         const { sourceDir, rootName } = await this.fetchAndLocate(tmpRoot, rows[0]!.repoOwner!, rows[0]!.repoName!, branch);
         const remoteRoot = rootName ? path.join(path.dirname(sourceDir), rootName) : sourceDir;
         const scanned = await scanSkillDirs(remoteRoot);
@@ -473,7 +473,7 @@ export class SkillsService {
     const row = this.skillRow(skillId);
     if (!row.repoOwner || !row.repoName) throw new SkillInputError('该 skill 无 GitHub 来源，无法更新');
     const branch = row.branch ?? 'main';
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillupd-'));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-skillupd-'));
     try {
       const { sourceDir } = await this.fetchAndLocate(tmp, row.repoOwner, row.repoName, branch, row.directory);
       const metadata = await parseSkillMetadata(path.join(sourceDir, SKILL_MD));

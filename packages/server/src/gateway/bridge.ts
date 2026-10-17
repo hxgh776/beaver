@@ -64,7 +64,7 @@ export function createBridgeServer(opts: BridgeOptions): Server {
     if (client) return Promise.resolve(client);
     if (!connecting) {
       connecting = (async () => {
-        const c = new Client({ name: 'actl-bridge', version: '0.1.0' }, { capabilities: {} });
+        const c = new Client({ name: 'beaver-bridge', version: '0.1.0' }, { capabilities: {} });
         const transport = new StreamableHTTPClientTransport(new URL(opts.url), {
           requestInit: { headers: { ...(opts.headers ?? {}) } },
         });
@@ -84,7 +84,7 @@ export function createBridgeServer(opts: BridgeOptions): Server {
   };
 
   const server = new Server(
-    { name: opts.name ?? 'actl-bridge', version: '0.1.0' },
+    { name: opts.name ?? 'beaver-bridge', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 

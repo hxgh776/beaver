@@ -27,7 +27,7 @@ async function api(
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-provapi-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-provapi-'));
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();
   base = daemon.baseUrl;

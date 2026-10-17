@@ -17,20 +17,10 @@ import {
 import type { AgentAdapter } from './adapters/types.js';
 import type { AgentType } from './types.js';
 
-/** 安装证据探测：配置文件之外判断「装没装」的依据。
- * program（可执行/.app）与 binary（PATH 命令）是强信号；data（用户数据目录）卸载后可能残留，是弱信号。
- * 只探默认位置与 PATH——安装位置不参与任何功能，不值得为自定义目录维护注册表扫描。 */
-export interface InstallProbe {
-  commands: string[];
-  program: string[];
-  data: string[];
-}
-
 export interface AgentDefinition {
   type: AgentType;
   displayName: string;
   adapter: AgentAdapter;
-  installProbe?: InstallProbe;
 }
 
 /**
@@ -39,10 +29,6 @@ export interface AgentDefinition {
  */
 export function makeAgents(baseDir?: string): Record<AgentType, AgentDefinition> {
   const p = (...segments: string[]): string => path.join(baseDir ?? os.homedir(), ...segments);
-  const win = process.platform === 'win32';
-  const mac = process.platform === 'darwin';
-  const localAppData = process.env['LOCALAPPDATA'] ?? p('AppData', 'Local');
-  const appData = process.env['APPDATA'] ?? p('AppData', 'Roaming');
 
   const claudeCode = new JsonAgentAdapter({
     type: 'claude-code',
@@ -147,66 +133,16 @@ export function makeAgents(baseDir?: string): Record<AgentType, AgentDefinition>
   });
 
   return {
-    'claude-code': { type: 'claude-code', displayName: 'Claude Code', adapter: claudeCode, installProbe: { commands: ['claude'], program: [], data: [] } },
-    codex: { type: 'codex', displayName: 'Codex CLI', adapter: codex, installProbe: { commands: ['codex'], program: [], data: [] } },
-    cursor: {
-      type: 'cursor', displayName: 'Cursor', adapter: cursor,
-      installProbe: {
-        commands: ['cursor'],
-        program: mac ? ['/Applications/Cursor.app'] : win ? [path.join(localAppData, 'Programs', 'cursor', 'Cursor.exe')] : [],
-        data: [],
-      },
-    },
-    trae: {
-      type: 'trae', displayName: 'Trae', adapter: trae,
-      installProbe: {
-        commands: ['trae', 'trae-cn'],
-        program: mac
-          ? ['/Applications/Trae.app', '/Applications/Trae CN.app']
-          : win
-            ? [path.join(localAppData, 'Programs', 'Trae', 'Trae.exe'), path.join(localAppData, 'Programs', 'Trae CN', 'Trae CN.exe')]
-            : [],
-        data: mac
-          ? [p('Library', 'Application Support', 'Trae'), p('Library', 'Application Support', 'Trae CN')]
-          : win
-            ? [path.join(appData, 'Trae'), path.join(appData, 'Trae CN')]
-            : [p('.config', 'Trae')],
-      },
-    },
-    opencode: { type: 'opencode', displayName: 'OpenCode', adapter: opencode, installProbe: { commands: ['opencode'], program: [], data: [] } },
-    'claude-desktop': {
-      type: 'claude-desktop', displayName: 'Claude Desktop', adapter: claudeDesktop,
-      installProbe: {
-        commands: [],
-        program: mac ? ['/Applications/Claude.app'] : win ? [path.join(localAppData, 'AnthropicClaude', 'claude.exe')] : [],
-        data: mac ? [p('Library', 'Application Support', 'Claude')] : win ? [path.join(appData, 'Claude')] : [p('.config', 'Claude')],
-      },
-    },
-    windsurf: {
-      type: 'windsurf', displayName: 'Windsurf', adapter: windsurf,
-      installProbe: {
-        commands: ['windsurf'],
-        program: mac ? ['/Applications/Windsurf.app'] : win ? [path.join(localAppData, 'Programs', 'Windsurf', 'Windsurf.exe')] : [],
-        data: [],
-      },
-    },
-    'gemini-cli': { type: 'gemini-cli', displayName: 'Gemini CLI', adapter: geminiCli, installProbe: { commands: ['gemini'], program: [], data: [] } },
-    zcode: {
-      type: 'zcode', displayName: 'ZCode', adapter: zcode,
-      installProbe: {
-        commands: ['zcode'],
-        program: mac ? ['/Applications/ZCode.app'] : win ? [path.join(localAppData, 'Programs', 'zcode', 'ZCode.exe')] : [],
-        data: [p('.zcode')],
-      },
-    },
-    workbuddy: {
-      type: 'workbuddy', displayName: 'WorkBuddy', adapter: workbuddy,
-      installProbe: {
-        commands: ['workbuddy'],
-        program: win ? [path.join(localAppData, 'Programs', 'workbuddy', 'WorkBuddy.exe')] : [],
-        data: [p('.workbuddy'), path.join(localAppData, 'WorkBuddy')],
-      },
-    },
+    'claude-code': { type: 'claude-code', displayName: 'Claude Code', adapter: claudeCode },
+    codex: { type: 'codex', displayName: 'Codex CLI', adapter: codex },
+    cursor: { type: 'cursor', displayName: 'Cursor', adapter: cursor },
+    trae: { type: 'trae', displayName: 'Trae', adapter: trae },
+    opencode: { type: 'opencode', displayName: 'OpenCode', adapter: opencode },
+    'claude-desktop': { type: 'claude-desktop', displayName: 'Claude Desktop', adapter: claudeDesktop },
+    windsurf: { type: 'windsurf', displayName: 'Windsurf', adapter: windsurf },
+    'gemini-cli': { type: 'gemini-cli', displayName: 'Gemini CLI', adapter: geminiCli },
+    zcode: { type: 'zcode', displayName: 'ZCode', adapter: zcode },
+    workbuddy: { type: 'workbuddy', displayName: 'WorkBuddy', adapter: workbuddy },
   };
 }
 

@@ -13,7 +13,7 @@ import {
   recoverPendingPublications,
 } from '../src/write-engine.js';
 import { CodexTomlAdapter } from '../src/adapters/codex-toml.js';
-import { JsonAgentAdapter, normalizeClaudeStyle } from '../src/adapters/json-adapter.js';
+import { JsonAgentAdapter, denormalizeClaudeStyle, normalizeClaudeStyle } from '../src/adapters/json-adapter.js';
 import { MalformedConfigError } from '../src/errors.js';
 import type { ManagerConfig } from '../src/types.js';
 
@@ -21,7 +21,7 @@ let sandbox: string;
 let store: Store;
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-we-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-we-'));
   store = new Store(sandbox);
 });
 
@@ -160,5 +160,56 @@ describe('S0 解析失败绝不从空文档写 (U-WE-03)', () => {
     await expect(adapter.apply(file, [{ key: 'b', entry: { transport: 'stdio', command: 'npx' } }], { previous: [] }))
       .rejects.toBeInstanceOf(MalformedConfigError);
     expect(await fs.readFile(file, 'utf8')).toBe('[mcp_servers.a\nbroken===');
+  });
+});
+
+describe('嵌套容器写后校验 (C6)', () => {
+  const makeZcode = (file: string) =>
+    new JsonAgentAdapter({
+      type: 'zcode',
+      displayName: 'ZCode',
+      transports: ['stdio', 'http', 'sse'],
+      paths: [file],
+      containerKey: 'mcp.servers',
+      normalize: normalizeClaudeStyle,
+      denormalize: denormalizeClaudeStyle,
+    });
+
+  it('首次写入新建中间层（无 mcp 键）→ 校验通过不回滚', async () => {
+    // 回归：写入新建的空中间层壳在校验时须剪除，否则首次分发必然误判回滚
+    const file = await writeAgentFile(['.zcode', 'cli', 'config.json'], JSON.stringify({ plugins: { a: true } }));
+    const result = await makeZcode(file).apply(
+      file,
+      [{ key: 'beaver', entry: { transport: 'http', url: 'http://127.0.0.1:6280/mcp' } }],
+      { previous: [] },
+    );
+    expect(result.changes).toEqual([{ key: 'beaver', action: 'upsert' }]);
+    const after = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(after.mcp.servers.beaver).toEqual({ type: 'http', url: 'http://127.0.0.1:6280/mcp' });
+    expect(after.plugins).toEqual({ a: true });
+  });
+
+  it('中间层已有兄弟键 → 摘叶后不误剪，校验通过', async () => {
+    const file = await writeAgentFile(
+      ['.zcode', 'cli', 'config.json'],
+      JSON.stringify({ mcp: { other: { keep: 1 } } }),
+    );
+    await makeZcode(file).apply(
+      file,
+      [{ key: 'beaver', entry: { transport: 'stdio', command: 'npx' } }],
+      { previous: [] },
+    );
+    const after = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(after.mcp.other).toEqual({ keep: 1 });
+    expect(after.mcp.servers.beaver).toEqual({ command: 'npx' });
+  });
+
+  it('中间层是非对象 → MALFORMED_CONFIG 且文件一个字节不动', async () => {
+    const raw = '{"mcp":"not-an-object"}';
+    const file = await writeAgentFile(['.zcode', 'cli', 'config.json'], raw);
+    await expect(
+      makeZcode(file).apply(file, [{ key: 'beaver', entry: { transport: 'stdio', command: 'npx' } }], { previous: [] }),
+    ).rejects.toBeInstanceOf(MalformedConfigError);
+    expect(await fs.readFile(file, 'utf8')).toBe(raw);
   });
 });

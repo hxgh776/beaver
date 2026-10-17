@@ -1,7 +1,9 @@
 node_modules/
+.worktrees/
 dist/
 coverage/
 *.log
 .DS_Store
 .acceptance/
 .publish-tmp
+awesome-design-md/

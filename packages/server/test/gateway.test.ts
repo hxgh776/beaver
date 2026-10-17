@@ -98,7 +98,7 @@ async function startFakeHttpUpstream(): Promise<FakeHttpUpstream> {
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-gw-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-gw-'));
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();
   base = daemon.baseUrl;
@@ -220,10 +220,38 @@ describe('gateway aggregate endpoint (I-GW)', () => {
     await client.close();
   });
 
-  it('I-GW-02 懒启动：网关启动但未使用时无上游进程', async () => {
-    const gw = (await api('GET', '/api/gateway')).data as { running: boolean; upstreams: unknown[] };
+  it('I-GW-02 懒启动：未使用时快照列出 idle 占位而非缺席', async () => {
+    const gw = (await api('GET', '/api/gateway')).data as {
+      running: boolean;
+      upstreams: Array<{ id: string; status: string; pid?: number; toolCount: number }>;
+    };
     expect(gw.running).toBe(true);
-    expect(gw.upstreams).toEqual([]); // 未有任何连接
+    // 启用中的网关型 server 即使从未被调用也要出现（idle 占位），管理页才能区分「启用」与「未运行/出错」
+    expect(gw.upstreams.map((u) => u.id).sort()).toEqual(['fs-a', 'fs-b', 'web']);
+    for (const u of gw.upstreams) {
+      expect(u.status).toBe('idle');
+      expect(u.pid).toBeUndefined();
+      expect(u.toolCount).toBe(0);
+    }
+  });
+
+  it('上游启动失败：快照标记 error 并保留错误信息', async () => {
+    await api('POST', '/api/servers', {
+      id: 'boom',
+      name: 'boom',
+      transport: 'stdio',
+      command: process.execPath,
+      args: ['-e', 'process.exit(1)'],
+      gatewayMode: true,
+    });
+    const res = await api('POST', '/api/servers/boom/start');
+    expect(res.status).toBe(500); // 启动失败回传 500
+    const gw = (await api('GET', '/api/gateway')).data as {
+      upstreams: Array<{ id: string; status: string; lastError: string | null }>;
+    };
+    const boom = gw.upstreams.find((u) => u.id === 'boom');
+    expect(boom?.status).toBe('error');
+    expect(boom?.lastError).toBeTruthy();
   });
 
   it('I-GW-03 崩溃自愈：杀上游进程后再次调用自动恢复', async () => {

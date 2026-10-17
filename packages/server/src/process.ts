@@ -3,17 +3,17 @@ import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { readTextIfExists } from '@agent-control/core';
+import { readTextIfExists } from '@beaver/core';
 
 /** 解析 daemon 入口：
  *  - npm 安装态：与 CLI 同目录的 bundle（dist/daemon.js，esbuild 双入口产物）
- *  - workspace 开发态：@agent-control/server 包的 dist/index.js
+ *  - workspace 开发态：@beaver/server 包的 dist/index.js
  */
 export function resolveDaemonEntry(): string {
   const bundled = path.resolve(import.meta.dirname, 'daemon.js');
   if (existsSync(bundled)) return bundled;
   const require = createRequire(import.meta.url);
-  return require.resolve('@agent-control/server');
+  return require.resolve('@beaver/server');
 }
 
 export async function readPid(pidPath: string): Promise<number | null> {

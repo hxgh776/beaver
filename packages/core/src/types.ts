@@ -59,10 +59,10 @@ export interface ServerGroup {
 }
 
 /** 网关聚合配置在各 agent 配置文件中占用的公共键名 */
-export const GATEWAY_KEY = 'agent-control-gateway';
+export const GATEWAY_KEY = 'beaver-gateway';
 
 /** 项目更名前使用的旧键名：同步时无条件清理，导入时同样视为自身条目 */
-export const LEGACY_GATEWAY_KEY = 'mcp-manager-gateway';
+export const LEGACY_GATEWAY_KEY = 'agent-control-gateway';
 
 /** 管辖片段（写入 agent 配置的某个键）的 hash 快照，用于 C8 冲突检测 */
 export interface KeyState {
@@ -101,22 +101,12 @@ export interface ManagerConfig {
   settings: Settings;
 }
 
-export interface InstallEvidence {
-  /** binary = PATH 上的命令；program = 默认安装位置；data = 用户数据目录（卸载后可能残留，弱信号）。
-   * 安装位置仅用于「已装/未装」展示，不参与任何读写——配置/skills 全部走主目录标准路径。 */
-  kind: 'binary' | 'program' | 'data';
-  path: string;
-}
-
 export interface AgentDetection {
   agentType: AgentType;
   displayName: string;
-  /** 配置存在或发现任一安装证据 */
+  /** 候选配置文件任一存在即视为已安装（配置可能是卸载残留，但足以判定可用） */
   detected: boolean;
-  /** 配置文件是否实际存在（卸载残留的配置也算） */
-  configExists: boolean;
-  /** 安装证据明细（UI 据此区分「已安装」与「仅检测到数据」） */
-  installEvidence: InstallEvidence[];
+  /** 存在的配置文件路径；都不存在时返回全部候选路径（供 UI 展示与分发写入选址） */
   configPaths: string[];
   transports: TransportType[];
 }

@@ -103,7 +103,7 @@ describe('resolveHomeDir (U-ST-07)', () => {
       expect(resolveHomeDir('D:\\explicit')).toBe('D:\\explicit');
       expect(resolveHomeDir()).toBe('D:\\sandbox-home');
       delete process.env['AGENT_CONTROL_HOME'];
-      expect(resolveHomeDir()).toBe(path.join(os.homedir(), '.agent-control'));
+      expect(resolveHomeDir()).toBe(path.join(os.homedir(), '.beaver'));
     } finally {
       if (original === undefined) delete process.env['AGENT_CONTROL_HOME'];
       else process.env['AGENT_CONTROL_HOME'] = original;
@@ -153,7 +153,7 @@ describe('stableHash (U-ST-06)', () => {
 
 describe('maybeMigrateHome（数据目录迁移）', () => {
   it('新目录不存在 + 旧目录存在 → 整体改名；旧目录占用 → 沿用旧目录', async () => {
-    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-migrate-'));
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-migrate-'));
     try {
       const legacy = path.join(base, 'legacy-home');
       const next = path.join(base, 'new-home');

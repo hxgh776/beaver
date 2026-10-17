@@ -159,14 +159,14 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
               const agentEndpoint = `http://127.0.0.1:${status.data?.port}/agents/${a.agentType}/mcp`;
               return (
                 <tr key={a.agentType} className={rowCls}>
-                  <td className="w-40 py-2.5 font-medium text-slate-800">{a.displayName}</td>
-                  <td className="py-2.5">
+                  <td className="w-40 py-2 font-medium text-slate-800">{a.displayName}</td>
+                  <td className="py-2">
                     <div className="flex items-center gap-2">
                       <code className={`block min-w-0 flex-1 break-all ${codeChipCls}`}>{agentEndpoint}</code>
                       <CopyBtn text={agentEndpoint} />
                     </div>
                   </td>
-                  <td className="w-28 py-2.5 text-right text-xs tabular-nums text-slate-500">
+                  <td className="w-28 py-2 text-right text-xs tabular-nums text-slate-500">
                     绑定 {a.boundServerIds.length} 个
                   </td>
                 </tr>
@@ -187,12 +187,12 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
         <table className="w-full text-sm">
           <thead>
             <tr className={theadCls}>
-              <th className="py-2.5">Server</th>
-              <th className="py-2.5">状态</th>
-              <th className="py-2.5">PID</th>
-              <th className="py-2.5">工具数</th>
-              <th className="py-2.5">错误</th>
-              <th className="py-2.5 text-right">操作</th>
+              <th className="py-2">Server</th>
+              <th className="py-2">状态</th>
+              <th className="py-2">PID</th>
+              <th className="py-2">工具数</th>
+              <th className="py-2">错误</th>
+              <th className="py-2 text-right">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -201,14 +201,14 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
               const alive = u.status === 'ready' || u.status === 'starting' || u.status === 'backoff';
               return (
                 <tr key={u.id} data-testid={`upstream-${u.id}`} className={rowCls}>
-                  <td className="py-2.5 font-medium text-slate-800">{u.id}</td>
-                  <td className="py-2.5">
+                  <td className="py-2 font-medium text-slate-800">{u.id}</td>
+                  <td className="py-2">
                     <UpstreamBadge status={u.status} />
                   </td>
-                  <td className="py-2.5 tabular-nums text-slate-600">{u.pid ?? '-'}</td>
-                  <td className="py-2.5 tabular-nums text-slate-600">{u.toolCount}</td>
-                  <td className="py-2.5 text-xs text-rose-600">{u.lastError ?? ''}</td>
-                  <td className="py-2.5 text-right">
+                  <td className="py-2 tabular-nums text-slate-600">{u.pid ?? '-'}</td>
+                  <td className="py-2 tabular-nums text-slate-600">{u.toolCount}</td>
+                  <td className="py-2 text-xs text-rose-600">{u.lastError ?? ''}</td>
+                  <td className="py-2 text-right">
                     <div className="flex justify-end gap-2">
                       <Btn small disabled={alive} onClick={() => restart.mutate({ id: u.id, action: 'start' })}>
                         启动

@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, agentInstallTier } from '../api';
+import { api } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
-import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, Pager, inputCls, useToast } from '../ui';
+
+/** 明细分页：xl 4 列 × 1 行，配卡片头部的数字分页切换 */
+const DETAIL_PAGE_SIZE = 4;
+/** 分组卡片分页：3 列 × 2 行 */
+const GROUP_PAGE_SIZE = 6;
 
 export function SyncPage() {
   const qc = useQueryClient();
@@ -13,6 +18,8 @@ export function SyncPage() {
   const [resolutions, setResolutions] = useState<Record<string, 'override' | 'skip'>>({});
   const [editing, setEditing] = useState<GroupInfo | 'new' | null>(null);
   const [removing, setRemoving] = useState<GroupInfo | null>(null);
+  const [detailPage, setDetailPage] = useState(0);
+  const [groupPage, setGroupPage] = useState(0);
 
   const servers = useQuery({
     queryKey: ['servers'],
@@ -95,52 +102,34 @@ export function SyncPage() {
   const serverName = (id: string): string => serverList.find((s) => s.id === id)?.name ?? id;
   const groupName = (id: string): string => groupList.find((g) => g.id === id)?.name ?? id;
   const agentName = (type: string): string => agentList.find((a) => a.agentType === type)?.displayName ?? type;
+  // 明细分页：列表缩短时收敛到合法页码
+  const detailTotalPages = Math.max(1, Math.ceil(agentList.length / DETAIL_PAGE_SIZE));
+  const safeDetailPage = Math.min(detailPage, detailTotalPages - 1);
+  const pageAgents = agentList.slice(safeDetailPage * DETAIL_PAGE_SIZE, (safeDetailPage + 1) * DETAIL_PAGE_SIZE);
+  // 分组卡片分页
+  const groupTotalPages = Math.max(1, Math.ceil(groupList.length / GROUP_PAGE_SIZE));
+  const safeGroupPage = Math.min(groupPage, groupTotalPages - 1);
+  const pageGroups = groupList.slice(safeGroupPage * GROUP_PAGE_SIZE, (safeGroupPage + 1) * GROUP_PAGE_SIZE);
 
   return (
     <div>
       <Card
-        title="Agent 分发"
-        subtitle="分组批量管理：把 MCP 加入分组、把 agent 关联到分组；也支持给单个 agent 直连添加 MCP。改动后点「同步到所有 Agent」写入各配置文件。"
+        title="MCP 分组"
+        subtitle={`共 ${serverList.length} 个 server · ${groupList.length} 个分组 —— agent 关联分组后即分发组内全部 server`}
         actions={
-          <div className="flex gap-2">
+          <>
             <Btn testId="btn-dry-run" onClick={() => sync.mutate(true)}>
               预览变更
             </Btn>
             <Btn kind="primary" testId="btn-sync" disabled={sync.isPending} onClick={() => sync.mutate(false)}>
               同步到所有 Agent
             </Btn>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
-          {(
-            [
-              ['MCP Server', serverList.length],
-              ['分组', groupList.length],
-              [
-                '已关联 agent（含未安装）',
-                new Set([
-                  ...groupList.flatMap((g) => g.agentTypes),
-                  ...agentList.filter((a) => a.directServerIds.length > 0).map((a) => a.agentType),
-                ]).size,
-              ],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-              <div className="text-xs text-slate-400">{label}</div>
-              <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card
-        title="MCP 分组"
-        subtitle="一个分组 = 一批 MCP server；agent 关联分组后即分发组内全部 server"
-        actions={
-          <Btn kind="primary" testId="btn-add-group" onClick={() => setEditing('new')}>
-            新建分组
-          </Btn>
+            <span className="mx-1 h-6 w-px bg-slate-200" aria-hidden />
+            <Pager page={safeGroupPage} totalPages={groupTotalPages} onPage={setGroupPage} />
+            <Btn small kind="primary" testId="btn-add-group" onClick={() => setEditing('new')}>
+              新建分组
+            </Btn>
+          </>
         }
       >
         {groupList.length === 0 ? (
@@ -151,12 +140,12 @@ export function SyncPage() {
             </Btn>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {groupList.map((g) => (
-              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
-                <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+            {pageGroups.map((g) => (
+              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+                <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="truncate font-semibold text-slate-800" title={g.name}>{g.name}</span>
+                    <span className="truncate text-sm font-semibold text-slate-800" title={g.name}>{g.name}</span>
                     <div className="mt-0.5 text-xs tabular-nums text-slate-400">
                       {g.serverIds.length} 个 MCP · {g.agentTypes.length} 个 agent
                     </div>
@@ -166,8 +155,8 @@ export function SyncPage() {
                     <Btn small kind="danger" onClick={() => setRemoving(g)}>删除</Btn>
                   </div>
                 </div>
-                <div className="mb-1.5 text-xs font-medium text-slate-400">包含 MCP</div>
-                <div className="mb-2 flex flex-wrap gap-1.5">
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className="text-xs font-medium text-slate-400">包含</span>
                   {g.serverIds.map((sid) => (
                     <Chip key={sid} onRemove={() => groupServer.mutate({ groupId: g.id, serverId: sid, on: false })}>
                       {serverName(sid)}
@@ -175,8 +164,8 @@ export function SyncPage() {
                   ))}
                   {g.serverIds.length === 0 && <span className="text-xs text-slate-300">空分组</span>}
                 </div>
-                <div className="mb-1.5 text-xs font-medium text-slate-400">关联 Agent</div>
-                <div className="mb-3 flex flex-wrap gap-1.5">
+                <div className="mt-1 mb-2 flex flex-wrap items-center gap-1">
+                  <span className="text-xs font-medium text-slate-400">关联</span>
                   {g.agentTypes.map((t) => (
                     <Chip key={t} tone="blue" onRemove={() => groupAgent.mutate({ groupId: g.id, agentType: t, on: false })}>
                       {agentName(t)}
@@ -184,7 +173,7 @@ export function SyncPage() {
                   ))}
                   {g.agentTypes.length === 0 && <span className="text-xs text-slate-300">未关联</span>}
                 </div>
-                <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-2.5">
+                <div className="mt-auto flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
                   <AddMenu
                     label="添加 MCP"
                     testId={`group-server-add-${g.id}`}
@@ -209,36 +198,40 @@ export function SyncPage() {
         )}
       </Card>
 
-      <Card title="Agent 分发明细" subtitle="每个 agent 的有效分发 = 所属分组包含的 MCP + 直连添加的 MCP">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {agentList.map((a) => (
-            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-800">{a.displayName}</span>
-                  {agentInstallTier(a) === 'installed' ? (
-                    <Badge tone="green">已装</Badge>
-                  ) : agentInstallTier(a) === 'data-only' ? (
-                    <span title="未发现程序安装，仅检测到配置或数据残留">
-                      <Badge tone="amber">仅数据</Badge>
+      <Card
+        title="Agent 分发明细"
+        subtitle="每个 agent 的有效分发 = 所属分组包含的 MCP + 直连添加的 MCP"
+        actions={
+          <Pager page={safeDetailPage} totalPages={detailTotalPages} onPage={setDetailPage} />
+        }
+      >
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+          {pageAgents.map((a) => (
+            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold text-slate-800">{a.displayName}</span>
+                  {a.detected ? (
+                    <span title={`检测到配置文件：${a.configPaths[0]}`}>
+                      <Badge tone="green">已安装</Badge>
                     </span>
                   ) : (
-                    <Badge tone="gray">未发现</Badge>
+                    <span title="未发现配置文件">
+                      <Badge tone="gray">未发现</Badge>
+                    </span>
                   )}
                 </div>
-                <span className="text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
+                <span className="shrink-0 text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
               </div>
-              <div className="mb-1.5 text-xs font-medium text-slate-400">所属分组</div>
-              <div className="mb-2 flex flex-wrap gap-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                <span className="text-xs font-medium text-slate-400">分组</span>
                 {a.groupIds.map((gid) => (
                   <Chip key={gid} tone="blue" onRemove={() => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: false })}>
                     {groupName(gid)}
                   </Chip>
                 ))}
                 {a.groupIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
-              </div>
-              <div className="mb-1.5 text-xs font-medium text-slate-400">直连 MCP</div>
-              <div className="mb-3 flex flex-wrap gap-1.5">
+                <span className="ml-1 text-xs font-medium text-slate-400">直连</span>
                 {a.directServerIds.map((sid) => (
                   <Chip key={sid} onRemove={() => bind.mutate({ agentType: a.agentType, serverId: sid, on: false })}>
                     {serverName(sid)}
@@ -246,7 +239,7 @@ export function SyncPage() {
                 ))}
                 {a.directServerIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
               </div>
-              <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2.5">
+              <div className="mt-auto flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
                 <AddMenu
                   label="加入分组"
                   testId={`agent-group-add-${a.agentType}`}

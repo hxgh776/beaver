@@ -60,12 +60,12 @@ export function LogsPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white">
               <tr className={theadCls}>
-                <th className="py-2.5">时间</th>
-                <th className="py-2.5">Server</th>
-                <th className="py-2.5">工具</th>
-                <th className="py-2.5">结果</th>
-                <th className="py-2.5">耗时</th>
-                <th className="py-2.5">错误</th>
+                <th className="py-2">时间</th>
+                <th className="py-2">Server</th>
+                <th className="py-2">工具</th>
+                <th className="py-2">结果</th>
+                <th className="py-2">耗时</th>
+                <th className="py-2">错误</th>
               </tr>
             </thead>
             <tbody>

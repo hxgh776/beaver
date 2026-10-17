@@ -5,7 +5,7 @@
  * 四去向：删 + 暂存 / 整份写行里的 auth / 托管写 / 不动。
  */
 
-/** 暂存文件结构（~/.agent-control/codex-login-stash.json，0600 语义由数据目录权限兜底） */
+/** 暂存文件结构（~/.beaver/codex-login-stash.json，0600 语义由数据目录权限兜底） */
 export interface LoginStash {
   logins: Record<string, unknown>;
   /** 最近一次暂存的身份：切回没有自己登录的官方卡时还它 */

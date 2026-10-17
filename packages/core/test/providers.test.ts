@@ -23,7 +23,7 @@ let config: ManagerConfig;
 let service: ProvidersService;
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-prov-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-prov-'));
   store = new Store(sandbox);
   config = await store.load();
   service = new ProvidersService({

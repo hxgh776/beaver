@@ -2,25 +2,55 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RegistrySearchResult, RegistrySuggestion, ServerDefDTO } from '../api';
-import { Badge, Btn, Card, Icon, Pagination, Spinner, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, Icon, Pagination, Segmented, Spinner, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-const PAGE_SIZE = 20;
+// 每页 12 张（3 列 × 4 行）：整页配合头部控制在了一屏内，翻页在卡片底部
+const PAGE_SIZE = 12;
 
-/** 搜索/浏览的数据源；npm 仅在有关键词时可用（npm 没有可浏览目录） */
-const SOURCES = [
-  { key: 'official', label: '官方 Registry' },
-  { key: 'smithery', label: 'Smithery' },
-  { key: 'npm', label: 'npm' },
+/** 搜索/浏览的数据源，按国内/国际分组；npm 仅在有关键词时可用（npm 没有可浏览目录） */
+const SOURCE_GROUPS = [
+  {
+    region: '国内',
+    sources: [
+      { key: 'modelscope', label: '魔搭 ModelScope', title: '魔搭 MCP 广场（阿里）：1.2万+，中文描述 + 完整安装配置' },
+      { key: 'baidu', label: '百度 MCP World', title: '百度 MCP World：6万+ 收录，仅浏览发现，不支持自动添加' },
+    ],
+  },
+  {
+    region: '国际',
+    sources: [
+      { key: 'official', label: '官方 Registry', title: '官方 MCP Registry：规范源头，约 1.7 万条' },
+      { key: 'github', label: 'GitHub', title: 'GitHub MCP Registry：官方同构镜像，附完整 README' },
+      { key: 'smithery', label: 'Smithery', title: 'Smithery：大而全的第三方注册表；连接托管端点需自备 API key' },
+      { key: 'cline', label: 'Cline 市场', title: 'Cline 市场：人工精选约 150 个，含安装模板' },
+      { key: 'docker', label: 'Docker 目录', title: 'Docker MCP 目录：安全审核约 270 个，需本机安装 Docker' },
+      { key: 'mcpm', label: 'mcpm', title: 'mcpm.sh 聚合注册表：约 390 个 npm/uvx 安装模板' },
+      { key: 'npm', label: 'npm', title: 'npm 搜索：需关键词，按周下载量排序；上游不可达时的兜底' },
+    ],
+  },
 ] as const;
 
-type SourceKey = (typeof SOURCES)[number]['key'];
+type SourceKey = (typeof SOURCE_GROUPS)[number]['sources'][number]['key'];
+
+const SOURCE_KEYS = SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => s.key)) as readonly SourceKey[];
 
 /** 结果实际来源 → 展示名（回退时可能与所选源不同） */
-const SOURCE_LABEL: Record<string, string> = {
-  official: '官方 Registry',
-  smithery: 'Smithery',
-  npm: 'npm',
+const SOURCE_LABEL: Record<SourceKey, string> = Object.fromEntries(
+  SOURCE_GROUPS.flatMap((g) => g.sources.map((s) => [s.key, s.label])),
+) as Record<SourceKey, string>;
+
+/** 结果实际来源 → 结果区副标题（安装注意事项） */
+const SOURCE_NOTE: Record<SourceKey, string> = {
+  official: '来源：官方 MCP Registry',
+  github: '来源：GitHub MCP Registry（官方同构镜像）',
+  smithery: '来源：Smithery Registry——添加后需在编辑中配置 Smithery API key（Authorization 头）',
+  npm: '来源：npm 搜索回退（上游 registry 不可达），npx 型、默认网关模式',
+  modelscope: '来源：魔搭 ModelScope MCP 广场——中文描述，优先本地 stdio 配置；托管端点可能需 ModelScope token',
+  baidu: '来源：百度 MCP World——仅浏览发现（无安装配置），可按名称到其他源搜索后添加',
+  cline: '来源：Cline 市场（人工精选）——从官方安装模板解析出可执行配置',
+  docker: '来源：Docker MCP 目录（安全审核）——需本机安装 Docker，以 docker run 运行',
+  mcpm: '来源：mcpm.sh 聚合注册表——npm/uvx 安装模板',
 };
 
 /** 热度数字格式化：≥1万 → x.x万，其余千分位 */
@@ -29,10 +59,13 @@ function formatCount(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-/** 热度徽章文案：npm=周下载量，smithery=使用次数 */
+/** 热度徽章文案：npm=周下载量，Smithery/mcpm=使用次数，魔搭=调用量，百度=star */
 function heatLabel(r: RegistrySuggestion): string | null {
   if (r.useCount === undefined) return null;
-  return r.source === 'npm' ? `周下载 ${formatCount(r.useCount)}` : `${formatCount(r.useCount)} 次使用`;
+  if (r.source === 'npm') return `周下载 ${formatCount(r.useCount)}`;
+  if (r.source === 'modelscope') return `${formatCount(r.useCount)} 次调用`;
+  if (r.source === 'baidu') return `⭐ ${formatCount(r.useCount)}`;
+  return `${formatCount(r.useCount)} 次使用`;
 }
 
 export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
@@ -86,7 +119,7 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
 
   return (
     <div>
-      <Card title="MCP 发现" subtitle="浏览官方 MCP Registry 与 Smithery 收录的 server；搜索结果按热度排序（npm=周下载量、Smithery=使用次数；官方源无热度数据按相关性）。官方源不可达时自动回退 npm。">
+      <Card title="MCP 发现" subtitle="国内外九源聚合：魔搭 / 百度 / 官方 / GitHub / Smithery / Cline / Docker / mcpm / npm。搜索结果按热度排序（npm=周下载量、魔搭=调用量等）；官方源不可达时自动回退 npm。">
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -100,49 +133,35 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
             className={`${inputCls} flex-1`}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="搜索 MCP server，例如：context7、filesystem、notion…（留空 = 浏览全部；按 / 聚焦）"
+            placeholder="搜索 MCP server，例如：context7、filesystem、高德、notion…（留空 = 浏览全部；按 / 聚焦）"
           />
           <Btn kind="primary" disabled={results.isFetching} onClick={() => search(input.trim())}>
             {results.isFetching ? '查询中…' : '搜索'}
           </Btn>
         </form>
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs text-slate-400">数据源</span>
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-            {SOURCES.map((s) => {
-              const active = source === s.key;
-              const disabled = browsAll && s.key === 'npm';
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  data-testid={`source-${s.key}`}
-                  disabled={disabled}
-                  title={disabled ? 'npm 源需要搜索关键词' : undefined}
-                  onClick={() => switchSource(s.key)}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
-                    active ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {SOURCE_GROUPS.map((g) => (
+            <div key={g.region} className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">{g.region}</span>
+              <Segmented
+                value={source}
+                onChange={switchSource}
+                options={g.sources.map((s) => ({
+                  value: s.key,
+                  testId: `source-${s.key}`,
+                  disabled: browsAll && s.key === 'npm',
+                  title: browsAll && s.key === 'npm' ? 'npm 源需要搜索关键词' : s.title,
+                  label: s.label,
+                }))}
+              />
+            </div>
+          ))}
         </div>
       </Card>
 
       <Card
         title={browsAll ? '浏览全部 MCP' : `搜索“${query}”`}
-        subtitle={
-          served === 'npm'
-            ? '来源：npm 搜索回退（上游 registry 不可达），npx 型、默认网关模式'
-            : served === 'smithery'
-              ? '来源：Smithery Registry——添加后需在编辑中配置 Smithery API key（Authorization 头）'
-              : served === 'official'
-                ? '来源：官方 MCP Registry'
-                : undefined
-        }
+        subtitle={served !== undefined ? SOURCE_NOTE[served] : undefined}
         actions={
           browsAll ? undefined : (
             <Btn small onClick={() => { setInput(''); search(''); }}>
@@ -178,7 +197,7 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-50 to-violet-100 text-brand-600 ring-1 ring-brand-100">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-50 to-brand-100 text-brand-600 ring-1 ring-brand-200/70">
                         <Icon name="servers" className="h-5 w-5" />
                       </div>
                       <div className="min-w-0 flex-1">
