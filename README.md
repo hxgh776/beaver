@@ -141,7 +141,7 @@ dam autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗�
 ```bash
 pnpm install
 pnpm build        # 构建 core / server / web / @hxgh776/beaver（cli，含 esbuild 单包）
-pnpm test         # 134 个单元 + 集成测试（含真实子进程网关全链路）
+pnpm test         # 130 个单元 + 集成测试（含真实子进程网关全链路）
 pnpm lint
 cd e2e && pnpm i && npx playwright install chromium && pnpm test
 ```
