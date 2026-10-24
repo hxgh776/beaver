@@ -11,7 +11,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-**Beaver**（npm 包 [`@hxgh776/beaver`](https://www.npmjs.com/package/@hxgh776/beaver)，命令 `dam`）——面向开发者个人电脑的 **Agent 装备总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**与**供应商切换**已内置。
+**Beaver**（npm 包 [`@hxgh776/beaver`](https://www.npmjs.com/package/@hxgh776/beaver)，命令 `dam`）——面向开发者个人电脑的 **Agent 装备总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**已内置。
 
 > **Every agent's gear. One dam.** —— 河狸修坝：把所有水流收进同一座坝，每道闸门独立启闭，坝上看得见每一笔流量。配置一次，全局生效，很河狸。
 
@@ -23,7 +23,7 @@
 - **[magpie](https://github.com/yetone/magpie) 管"模型从哪来"**：LLM API 网关（多供应商路由、订阅共享、用量计费）。
 - 两者改写的配置字段不同（`mcpServers` vs model/baseURL），**可同时使用，互不冲突**：magpie 管模型，Beaver 管装备。
 
-> [cc-switch](https://github.com/farion1231/cc-switch) 是本项目「供应商切换」能力的灵感来源（防御性写入设计吸收自它）；重度多供应商路由需求建议直接用 magpie。
+> [cc-switch](https://github.com/farion1231/cc-switch) 是本项目的灵感来源之一，Skill 管理的防御性写入设计吸收自它；重度多供应商路由需求建议直接用 magpie。
 
 ## ✨ 界面一览
 
@@ -39,9 +39,9 @@
 |---|---|
 | ![MCP 发现](docs/screenshots/discovery.png) | ![调用日志](docs/screenshots/logs.png) |
 
-| Skill 管理（skills.sh 搜索 / 启停矩阵 / 更新检查） | 供应商（Claude Code / Codex / Gemini 一键切换） |
-|---|---|
-| ![Skill 管理](docs/screenshots/skills.png) | ![供应商](docs/screenshots/providers.png) |
+| Skill 管理（skills.sh 搜索 / 启停矩阵 / 更新检查） |
+|---|
+| ![Skill 管理](docs/screenshots/skills.png) |
 
 ## 🤔 为什么需要它
 
@@ -120,7 +120,6 @@ dam autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗�
 - **MCP 发现**：国内外九源聚合——官方 Registry、GitHub 镜像、Smithery、npm，国内魔搭 ModelScope MCP 广场与百度 MCP World，以及 Cline 市场、Docker MCP 目录、mcpm 聚合库；搜索按热度排序（npm 周下载量、魔搭调用量等），相关性过滤 + 按名去重，官方源不可达自动回退；
 - **协议桥接**：stdio ↔ streamable HTTP / SSE 双向兼容，老协议 server 和老协议 agent 都能接入；
 - **服务管理**：进程启停/重启、stderr 日志、调用日志（含耗时与错误）、工具调试台（不经 agent 直接调用）；
-- **供应商切换**：Claude Code / Codex / Gemini CLI 一键切换（222 个预设 + 自定义）；只动「供应商拥有的键」，hooks/permissions/用户 env 一个字节不碰；Codex 原生登录自动暂存/恢复（auth.json 四去向），写入带发布日志与崩溃前滚；
 - **Skill 管理**：skills.sh 搜索 + GitHub/本地 ZIP 安装（128MiB/512MiB/30000 条目供应链预算、zip-slip 双防线、symlink 拒收），SSOT + 每-agent 启停矩阵（内容哈希所有权守卫），更新检查与卸载备份（保留 20 份）；
 - **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
 
@@ -153,7 +152,6 @@ cd e2e && pnpm i && npx playwright install chromium && pnpm test
 
 - [x] ~~发布到 npm~~（`npm i -g @hxgh776/beaver`）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
-- [x] ~~供应商切换~~（Claude Code / Codex / Gemini，222 预设，吸收 cc-switch 防御性投影）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
 - [ ] 桌面化交付（单文件 exe + 托盘 + 设置页 + 首启向导，[方案](docs/desktop-plan.md)）
 - [ ] 项目级作用域（per-project 分发）

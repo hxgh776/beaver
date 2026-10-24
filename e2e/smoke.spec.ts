@@ -107,29 +107,3 @@ test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载'
   await page.getByRole('button', { name: '卸载' }).last().click();
   await expect(page.getByText(/已卸载/)).toBeVisible({ timeout: 15000 });
 });
-
-test('E-10 供应商页：预设创建 + 一键切换写 settings.json + 删除', async ({ page }) => {
-  await auth(page);
-  await page.getByTestId('tab-providers').click();
-  await page.getByTestId('btn-provider-new').click();
-  // 可搜索预设选择器：点开 → 选 Kimi
-  await page.getByTestId('provider-preset-select').click();
-  await page.getByTestId('provider-preset-option-Kimi').click();
-  await page.getByTestId('provider-key-input').fill('sk-e2e-kimi');
-  await page.getByTestId('provider-save').click();
-  await expect(page.getByTestId('provider-card-kimi')).toBeVisible({ timeout: 15000 });
-  // 切换
-  await page.getByTestId('provider-switch-kimi').click();
-  await page.getByRole('button', { name: '确认切换' }).click();
-  await expect(page.getByText(/已切换/)).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId('provider-card-kimi').getByText('当前')).toBeVisible();
-  // 落盘校验（沙箱 agent home）
-  const settings = JSON.parse(
-    await fs.readFile(path.join(daemon.homeDir, '.claude', 'settings.json'), 'utf8'),
-  ) as { env?: Record<string, string> };
-  expect(settings.env?.['ANTHROPIC_AUTH_TOKEN']).toBe('sk-e2e-kimi');
-  // 清理
-  await page.getByTestId('provider-delete-kimi').click();
-  await page.getByRole('button', { name: '删除' }).last().click();
-  await expect(page.getByText('已删除供应商档案')).toBeVisible({ timeout: 15000 });
-});

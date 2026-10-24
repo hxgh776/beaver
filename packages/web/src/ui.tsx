@@ -612,13 +612,6 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z" />
     </>
   ),
-  providers: (
-    <>
-      <path d="M4 17l6-5-6-5" />
-      <path d="M12 19h8" />
-      <circle cx="6" cy="7" r="1.2" />
-    </>
-  ),
   alert: (
     <>
       <path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />

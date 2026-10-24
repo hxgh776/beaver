@@ -68,25 +68,6 @@ const configSchema = z.object({
       enabled: z.boolean(),
     }),
   ).default([]),
-  providers: z.array(
-    z.object({
-      id: z.string(),
-      app: z.enum(['claude-code', 'codex', 'gemini-cli']),
-      name: z.string().min(1),
-      category: z.string().optional(),
-      websiteUrl: z.string().optional(),
-      fromPreset: z.string().optional(),
-      config: z.object({
-        env: z.record(z.string()).optional(),
-        auth: z.record(z.unknown()).optional(),
-        configToml: z.string().optional(),
-      }),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-      lastSwitchedAt: z.string().optional(),
-    }),
-  ).default([]),
-  providerCurrent: z.record(z.enum(['claude-code', 'codex', 'gemini-cli']), z.string()).default({}),
   syncState: z.record(
     z.object({
       agentType: z.string(),
@@ -112,8 +93,6 @@ export function defaultConfig(): ManagerConfig {
     groups: [],
     skills: [],
     skillTargets: [],
-    providers: [],
-    providerCurrent: {},
     syncState: {},
     settings: {
       port: 6280,

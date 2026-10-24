@@ -30,9 +30,7 @@ import {
   upsertGroup,
   upsertServer,
   SKILL_AGENT_LIST,
-  presetEnv,
 } from '@beaver/core';
-import type { ProviderApp } from '@beaver/core';
 import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@beaver/core';import { z } from 'zod';
 import type { Daemon } from './daemon.js';
 import { sendError, sendJson } from './http-util.js';
@@ -799,98 +797,6 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
   router.post('/api/gateway/stop', async (ctx) => {
     if (!daemon.gatewayControl) return sendError(ctx.res, 503, 'gateway 模块未加载', 'GATEWAY_DOWN');
     sendJson(ctx.res, 200, await daemon.gatewayControl('stop'));
-  });
-
-  // —— 供应商切换（S1，吸收自 cc-switch 的投影语义）——
-  const providerUpsertSchema = z.object({
-    id: z.string().optional(),
-    app: z.enum(['claude-code', 'codex', 'gemini-cli']),
-    name: z.string().min(1),
-    category: z.string().optional(),
-    websiteUrl: z.string().optional(),
-    fromPreset: z.string().optional(),
-    config: z.object({
-      env: z.record(z.string()).optional(),
-      auth: z.record(z.unknown()).optional(),
-      configToml: z.string().optional(),
-    }),
-  });
-  const providerFromPresetSchema = z.object({
-    app: z.enum(['claude-code', 'codex', 'gemini-cli']),
-    presetName: z.string().min(1),
-    apiKey: z.string().optional(),
-  });
-
-  router.get('/api/providers', async (ctx) => {
-    sendJson(ctx.res, 200, { apps: daemon.providers.list() });
-  });
-
-  router.get('/api/providers/presets', async (ctx) => {
-    const app = (ctx.query.get('app') ?? '') as ProviderApp;
-    if (app !== 'claude-code' && app !== 'codex' && app !== 'gemini-cli') {
-      return sendError(ctx.res, 400, 'app 必须是 claude-code / codex / gemini-cli');
-    }
-    sendJson(ctx.res, 200, { presets: daemon.providers.presets(app) });
-  });
-
-  router.post('/api/providers', async (ctx) => {
-    const parsed = providerUpsertSchema.safeParse(await ctx.body());
-    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
-    try {
-      sendJson(ctx.res, 200, { profile: await daemon.providers.upsertProfile(parsed.data) });
-    } catch (err) {
-      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_SAVE_FAILED');
-    }
-  });
-
-  router.post('/api/providers/from-preset', async (ctx) => {
-    const parsed = providerFromPresetSchema.safeParse(await ctx.body());
-    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
-    try {
-      const { app, presetName, apiKey } = parsed.data;
-      const preset = daemon.providers.presets(app).find((p) => p.name === presetName);
-      if (!preset) return sendError(ctx.res, 404, `预设不存在: ${presetName}`);
-      const payload =
-        app === 'codex'
-          ? { auth: { ...(preset.auth ?? {}), OPENAI_API_KEY: apiKey ?? '' }, configToml: preset.config }
-          : {
-              env: Object.fromEntries(
-                Object.entries(presetEnv(preset)).map(([k, v]) => [
-                  k,
-                  v === '' && apiKey !== undefined ? apiKey : v,
-                ]),
-              ),
-            };
-      const profile = await daemon.providers.upsertProfile({
-        app,
-        name: preset.name,
-        category: preset.category,
-        websiteUrl: preset.websiteUrl,
-        fromPreset: preset.name,
-        config: payload,
-      });
-      sendJson(ctx.res, 200, { profile });
-    } catch (err) {
-      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_SAVE_FAILED');
-    }
-  });
-
-  router.delete('/api/providers/:id', async (ctx) => {
-    try {
-      await daemon.providers.deleteProfile(ctx.params['id']!);
-      sendJson(ctx.res, 200, { ok: true });
-    } catch (err) {
-      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_DELETE_FAILED');
-    }
-  });
-
-  router.post('/api/providers/:id/switch', async (ctx) => {
-    const body = (await ctx.body().catch(() => ({}))) as { preserveCodexLogin?: boolean };
-    try {
-      sendJson(ctx.res, 200, await daemon.providers.switchTo(ctx.params['id']!, body));
-    } catch (err) {
-      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_SWITCH_FAILED');
-    }
   });
 
   // —— Skill 管理（S2，吸收自 cc-switch 的防御性设计）——

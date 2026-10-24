@@ -99,19 +99,6 @@ await page.getByTestId('tab-skills').click();
 await page.waitForTimeout(500);
 await page.screenshot({ path: path.join(outDir, 'skills.png') });
 
-// 供应商页带一条真实档案（从预设创建 + 切换）
-await fetch(`${base}/api/providers/from-preset`, {
-  method: 'POST',
-  headers: auth,
-  body: JSON.stringify({ app: 'claude-code', presetName: 'Kimi', apiKey: 'sk-***' }),
-});
-const providerApps = (await (await fetch(`${base}/api/providers`, { headers: auth })).json()).apps;
-const kimi = providerApps.find((a) => a.app === 'claude-code').profiles.find((p) => p.name === 'Kimi');
-await fetch(`${base}/api/providers/${kimi.id}/switch`, { method: 'POST', headers: auth, body: '{}' });
-await page.getByTestId('tab-providers').click();
-await page.waitForTimeout(500);
-await page.screenshot({ path: path.join(outDir, 'providers.png') });
-
 await browser.close();
 child.kill();
 await fs.rm(homeDir, { recursive: true, force: true }).catch(() => {});

@@ -1,7 +1,7 @@
 {
   "name": "@hxgh776/beaver",
   "version": "0.1.0",
-  "description": "Beaver (河狸) \u2014 local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
+  "description": "Beaver (河狸) \u2014 local control plane for coding agents: MCP registry/distribution/gateway and skills.",
   "type": "module",
   "bin": {
     "dam": "dist/index.js",
