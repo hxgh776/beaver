@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
-import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, Pager, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, Pager, inputCls, selectCls, useToast } from '../ui';
 
 /** 明细分页：xl 4 列 × 1 行，配卡片头部的数字分页切换 */
 const DETAIL_PAGE_SIZE = 4;
@@ -155,23 +156,23 @@ export function SyncPage() {
                     <Btn small kind="danger" onClick={() => setRemoving(g)}>删除</Btn>
                   </div>
                 </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                  <span className="text-xs font-medium text-slate-400">包含</span>
-                  {g.serverIds.map((sid) => (
-                    <Chip key={sid} onRemove={() => groupServer.mutate({ groupId: g.id, serverId: sid, on: false })}>
-                      {serverName(sid)}
-                    </Chip>
-                  ))}
-                  {g.serverIds.length === 0 && <span className="text-xs text-slate-300">空分组</span>}
-                </div>
-                <div className="mt-1 mb-2 flex flex-wrap items-center gap-1">
-                  <span className="text-xs font-medium text-slate-400">关联</span>
-                  {g.agentTypes.map((t) => (
-                    <Chip key={t} tone="blue" onRemove={() => groupAgent.mutate({ groupId: g.id, agentType: t, on: false })}>
-                      {agentName(t)}
-                    </Chip>
-                  ))}
-                  {g.agentTypes.length === 0 && <span className="text-xs text-slate-300">未关联</span>}
+                <div className="mb-3 mt-2 space-y-1.5">
+                  <LabeledChipRow label="包含">
+                    {g.serverIds.map((sid) => (
+                      <Chip key={sid} onRemove={() => groupServer.mutate({ groupId: g.id, serverId: sid, on: false })}>
+                        {serverName(sid)}
+                      </Chip>
+                    ))}
+                    {g.serverIds.length === 0 && <span className="text-xs text-slate-300">空</span>}
+                  </LabeledChipRow>
+                  <LabeledChipRow label="关联">
+                    {g.agentTypes.map((t) => (
+                      <Chip key={t} tone="blue" onRemove={() => groupAgent.mutate({ groupId: g.id, agentType: t, on: false })}>
+                        {agentName(t)}
+                      </Chip>
+                    ))}
+                    {g.agentTypes.length === 0 && <span className="text-xs text-slate-300">未关联</span>}
+                  </LabeledChipRow>
                 </div>
                 <div className="mt-auto flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
                   <AddMenu
@@ -223,21 +224,23 @@ export function SyncPage() {
                 </div>
                 <span className="shrink-0 text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                <span className="text-xs font-medium text-slate-400">分组</span>
-                {a.groupIds.map((gid) => (
-                  <Chip key={gid} tone="blue" onRemove={() => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: false })}>
-                    {groupName(gid)}
-                  </Chip>
-                ))}
-                {a.groupIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
-                <span className="ml-1 text-xs font-medium text-slate-400">直连</span>
-                {a.directServerIds.map((sid) => (
-                  <Chip key={sid} onRemove={() => bind.mutate({ agentType: a.agentType, serverId: sid, on: false })}>
-                    {serverName(sid)}
-                  </Chip>
-                ))}
-                {a.directServerIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
+              <div className="mb-3 mt-2 space-y-1.5">
+                <LabeledChipRow label="分组">
+                  {a.groupIds.map((gid) => (
+                    <Chip key={gid} tone="blue" onRemove={() => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: false })}>
+                      {groupName(gid)}
+                    </Chip>
+                  ))}
+                  {a.groupIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
+                </LabeledChipRow>
+                <LabeledChipRow label="直连">
+                  {a.directServerIds.map((sid) => (
+                    <Chip key={sid} onRemove={() => bind.mutate({ agentType: a.agentType, serverId: sid, on: false })}>
+                      {serverName(sid)}
+                    </Chip>
+                  ))}
+                  {a.directServerIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
+                </LabeledChipRow>
               </div>
               <div className="mt-auto flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
                 <AddMenu
@@ -287,24 +290,28 @@ export function SyncPage() {
             const changes = a.changes.filter((c) => c.action !== 'none');
             if (changes.length === 0 && a.conflicts.length === 0 && a.unsupported.length === 0) return null;
             return (
-              <div key={a.agentType} data-testid={`report-${a.agentType}`} className="mb-4">
-                <h3 className="mb-1 font-medium">{a.agentType}</h3>
-                <ul className="text-sm">
+              <div key={a.agentType} data-testid={`report-${a.agentType}`} className="mb-4 last:mb-0">
+                <h3 className="mb-1.5 text-sm font-semibold text-slate-800">
+                  {agentName(a.agentType)}
+                  <span className="ml-1.5 font-mono text-xs font-normal text-slate-400">{a.agentType}</span>
+                </h3>
+                <ul className="space-y-1 text-sm">
                   {changes.map((c) => (
-                    <li key={c.key} className="text-slate-600">
-                      <Badge tone={c.action === 'remove' ? 'red' : 'green'}>{c.action}</Badge> {c.key}
+                    <li key={c.key} className="flex items-center gap-1.5 text-slate-600">
+                      <Badge tone={c.action === 'remove' ? 'red' : 'green'}>{c.action}</Badge>
+                      <span className="font-mono text-xs">{c.key}</span>
                     </li>
                   ))}
                   {a.unsupported.map((u) => (
                     <li key={u.serverId} className="text-amber-600">
-                      ⚠ {u.serverId}: {u.reason}
+                      ⚠ {serverName(u.serverId)}: {u.reason}
                     </li>
                   ))}
                   {a.conflicts.map((c) => (
-                    <li key={c.resolutionKey} data-testid={`conflict-${c.key}`} className="flex items-center gap-2 text-red-600">
+                    <li key={c.resolutionKey} data-testid={`conflict-${c.key}`} className="flex flex-wrap items-center gap-2 text-red-600">
                       ⚠ 冲突 {c.key}（检测到手工修改）
                       <select
-                        className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                        className={selectCls}
                         value={resolutions[c.resolutionKey] ?? 'skip'}
                         onChange={(e) =>
                           setResolutions({ ...resolutions, [c.resolutionKey]: e.target.value as 'override' | 'skip' })
@@ -324,6 +331,16 @@ export function SyncPage() {
           )}
         </Card>
       )}
+    </div>
+  );
+}
+
+/** 标签 + chips 的一行：标签固定宽度对齐（分组卡/明细卡通用），chips 换行，空态给弱化占位 */
+function LabeledChipRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-1.5">
+      <span className="w-8 shrink-0 pt-0.5 text-xs leading-5 text-slate-400">{label}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 leading-5">{children}</div>
     </div>
   );
 }
