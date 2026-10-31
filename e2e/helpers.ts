@@ -19,12 +19,23 @@ export interface TestDaemon {
  */
 export async function startTestDaemon(port = 6290): Promise<TestDaemon> {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-e2e-'));
-  const serverDist = path.dirname(require.resolve('@beaver/server'));
-  const child: ChildProcess = spawn(
-    process.execPath,
-    [serverDist, '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
-    { stdio: 'ignore', windowsHide: true },
-  );
+  // BEAVER_E2E_BIN 指向 Go 版 beaver.exe 时对拍 Go daemon（参数协议一致：--home/--agent-home/--port）
+  const goBin = process.env['BEAVER_E2E_BIN'];
+  let child: ChildProcess;
+  if (goBin) {
+    child = spawn(
+      goBin,
+      ['daemon', '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
+      { stdio: 'ignore', windowsHide: true },
+    );
+  } else {
+    const serverDist = path.dirname(require.resolve('@beaver/server'));
+    child = spawn(
+      process.execPath,
+      [serverDist, '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
+      { stdio: 'ignore', windowsHide: true },
+    );
+  }
 
   // 读取 token（daemon 启动时会生成默认配置）
   const storePath = path.join(homeDir, 'config.json');

@@ -56,6 +56,8 @@ func main() {
 		err = cmdGateway(rest)
 	case "autostart":
 		err = cmdAutostart(rest)
+	case "open":
+		err = cmdOpen()
 	case "version":
 		fmt.Println("beaver", version.String())
 	default:
@@ -83,6 +85,7 @@ func usage() {
   gateway status|start|stop   MCP 网关
   bridge <url>       stdio 反向桥（把 HTTP 上游暴露为本地 stdio server）
   autostart on|off|status    开机自启 daemon
+  open               在默认浏览器打开 Web UI
   version            版本信息
 `)
 }
@@ -502,4 +505,25 @@ func cmdGateway(args []string) error {
 	default:
 		return fmt.Errorf("未知子命令: gateway %s", sub)
 	}
+}
+
+// cmdOpen 打开本机 Web UI（默认浏览器）；daemon 未运行时提示先启动。
+func cmdOpen() error {
+	s := newStore()
+	config, err := s.Load()
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
+	// 先探测 daemon 在线，给出可行动的错误而非干弹一个打不开的浏览器
+	client := &http.Client{Timeout: 2 * time.Second}
+	req, _ := http.NewRequest("GET", base+"/api/auth/info", nil)
+	if _, err := client.Do(req); err != nil {
+		return fmt.Errorf("daemon 未运行（%s），请先执行 beaver start", base)
+	}
+	if err := openBrowser(base); err != nil {
+		return err
+	}
+	fmt.Printf("已在默认浏览器打开 %s\n", base)
+	return nil
 }

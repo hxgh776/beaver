@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
+    "build:go-web": "pnpm --filter @beaver/web build && node scripts/sync-web-dist.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint packages",
