@@ -1,6 +1,8 @@
 node_modules/
 .worktrees/
 dist/
+# 例外：Go embed 的 Web UI 产物必须入库（go:embed all:dist 无目录即编译失败）
+!internal/webui/dist/
 coverage/
 *.log
 .DS_Store
