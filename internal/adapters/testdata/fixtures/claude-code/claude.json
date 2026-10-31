@@ -1,0 +1,9 @@
+{
+  "theme": "dark",
+  "numStartups": 42,
+  "mcpServers": {
+    "user-server": { "command": "uvx", "args": ["some-server"] },
+    "remote-api": { "type": "http", "url": "https://api.example.com/mcp", "headers": { "Authorization": "Bearer abc" } }
+  },
+  "projects": { "D:\\w": { "allowedTools": ["Bash"] } }
+}

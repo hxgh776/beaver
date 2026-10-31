@@ -1,0 +1,12 @@
+# Codex CLI 配置
+model = "gpt-5-codex"
+model_provider = "custom"
+
+# 用户自定义注释，必须原样保留
+[profiles.fast]
+model = "gpt-5-mini"
+
+[mcp_servers.user_own]
+command = "user-server"
+# 托管区外的注释
+args = ["--flag"]
