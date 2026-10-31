@@ -75,6 +75,7 @@ type ServerDef struct {
 	GatewayMode   bool                     `json:"gatewayMode"`
 	Enabled       bool                     `json:"enabled"`
 	ToolOverrides *map[string]ToolOverride `json:"toolOverrides,omitempty"`
+	Concurrency   *int                     `json:"concurrency,omitempty"`
 	CreatedAt     string                   `json:"createdAt"`
 	UpdatedAt     string                   `json:"updatedAt"`
 }

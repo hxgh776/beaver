@@ -45,35 +45,35 @@ type Input struct {
 
 // SyncChange TS 侧在报告层把 serverId 附加到 changes 上（网关公共键/收敛键为空）。
 type SyncChange struct {
-	Key      string
-	Action   string
-	ServerID *string
+	Key      string  `json:"key"`
+	Action   string  `json:"action"`
+	ServerID *string `json:"serverId,omitempty"`
 }
 
 // SyncConflict 在适配器冲突信息上补充 resolutionKey（"<agentType>:<key>"）。
 type SyncConflict struct {
-	Key           string
-	ExpectedHash  string
-	CurrentHash   string
-	Resolution    adapters.ConflictResolution
-	ResolutionKey string
+	Key           string                      `json:"key"`
+	ExpectedHash  string                      `json:"expectedHash"`
+	CurrentHash   string                      `json:"currentHash"`
+	Resolution    adapters.ConflictResolution `json:"resolution"`
+	ResolutionKey string                      `json:"resolutionKey"`
 }
 
 type UnsupportedItem struct {
-	ServerID string
-	Reason   string
+	ServerID string `json:"serverId"`
+	Reason   string `json:"reason"`
 }
 
 type AgentSyncReport struct {
-	AgentType   string
-	File        string
-	Changes     []SyncChange
-	Conflicts   []SyncConflict
-	Unsupported []UnsupportedItem
+	AgentType   string            `json:"agentType"`
+	File        string            `json:"file"`
+	Changes     []SyncChange      `json:"changes"`
+	Conflicts   []SyncConflict    `json:"conflicts"`
+	Unsupported []UnsupportedItem `json:"unsupported"`
 }
 
 type Report struct {
-	PerAgent []AgentSyncReport
+	PerAgent []AgentSyncReport `json:"perAgent"`
 }
 
 func timeNowUTC() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }

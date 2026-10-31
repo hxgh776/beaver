@@ -9,13 +9,13 @@ import (
 
 // RawServerEntry agent 配置文件里一个 server 条目归一化后的形态（读取方向）。
 type RawServerEntry struct {
-	Transport store.Transport
-	Command   *string
-	Args      []string
-	Env       map[string]string
-	Cwd       *string
-	URL       *string
-	Headers   map[string]string
+	Transport store.Transport   `json:"transport"`
+	Command   *string           `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Cwd       *string           `json:"cwd,omitempty"`
+	URL       *string           `json:"url,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
 }
 
 // FragmentWrite 一次受管写入：Entry 为 nil 表示删除该键。

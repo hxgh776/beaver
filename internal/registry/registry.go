@@ -68,18 +68,19 @@ func UniqueID(config *store.Config, base string) string {
 
 // UpsertServerInput 可选字段用指针：nil = TS undefined（不覆盖/不写入）。
 type UpsertServerInput struct {
-	ID            string
-	Name          string
-	Transport     store.Transport
-	Command       *string
-	Args          *[]string
-	Env           *map[string]string
-	Cwd           *string
-	URL           *string
-	Headers       *map[string]string
-	GatewayMode   *bool
-	Enabled       *bool
-	ToolOverrides *map[string]store.ToolOverride
+	ID            string                         `json:"id,omitempty"`
+	Name          string                         `json:"name"`
+	Transport     store.Transport                `json:"transport"`
+	Command       *string                        `json:"command,omitempty"`
+	Args          *[]string                      `json:"args,omitempty"`
+	Env           *map[string]string             `json:"env,omitempty"`
+	Cwd           *string                        `json:"cwd,omitempty"`
+	URL           *string                        `json:"url,omitempty"`
+	Headers       *map[string]string             `json:"headers,omitempty"`
+	GatewayMode   *bool                          `json:"gatewayMode,omitempty"`
+	Enabled       *bool                          `json:"enabled,omitempty"`
+	ToolOverrides *map[string]store.ToolOverride `json:"toolOverrides,omitempty"`
+	Concurrency   *int                           `json:"concurrency,omitempty"`
 }
 
 // UpsertServer 直接改写传入的 config，调用方负责持久化。
@@ -113,6 +114,7 @@ func UpsertServer(config *store.Config, input UpsertServerInput) *store.ServerDe
 		GatewayMode:   input.GatewayMode != nil && *input.GatewayMode,
 		Enabled:       input.Enabled == nil || *input.Enabled,
 		ToolOverrides: input.ToolOverrides,
+		Concurrency:   input.Concurrency,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -149,6 +151,9 @@ func applyUpsert(existing *store.ServerDef, input UpsertServerInput) {
 	}
 	if input.ToolOverrides != nil {
 		existing.ToolOverrides = input.ToolOverrides
+	}
+	if input.Concurrency != nil {
+		existing.Concurrency = input.Concurrency
 	}
 }
 
@@ -301,16 +306,16 @@ func existingOrAll(existing, all []string) []string {
 // —— 导入（C5 冷启动） —— //
 
 type ImportCandidate struct {
-	AgentType   string
-	Key         string
-	Entry       adapters.RawServerEntry
-	Fingerprint string
+	AgentType   string                  `json:"agentType"`
+	Key         string                  `json:"key"`
+	Entry       adapters.RawServerEntry `json:"entry"`
+	Fingerprint string                  `json:"fingerprint"`
 }
 
 type ImportCandidateGroup struct {
-	Fingerprint string
-	Candidates  []ImportCandidate
-	Suggested   UpsertServerInput
+	Fingerprint string            `json:"fingerprint"`
+	Candidates  []ImportCandidate `json:"candidates"`
+	Suggested   UpsertServerInput `json:"suggested"`
 }
 
 func FingerprintOf(entry adapters.RawServerEntry) string {
@@ -393,19 +398,27 @@ func FingerprintOfServer(s *store.ServerDef) string {
 }
 
 func toUpsertInput(key string, entry adapters.RawServerEntry) UpsertServerInput {
-	env := entry.Env
-	headers := entry.Headers
-	args := entry.Args
-	return UpsertServerInput{
+	// TS 语义：entry.args/env/headers 为 undefined 时保持缺省（指针 nil = 不写入）
+	in := UpsertServerInput{
 		Name:      key,
 		Transport: entry.Transport,
 		Command:   entry.Command,
-		Args:      &args,
-		Env:       &env,
 		Cwd:       entry.Cwd,
 		URL:       entry.URL,
-		Headers:   &headers,
 	}
+	if entry.Args != nil {
+		args := entry.Args
+		in.Args = &args
+	}
+	if entry.Env != nil {
+		env := entry.Env
+		in.Env = &env
+	}
+	if entry.Headers != nil {
+		headers := entry.Headers
+		in.Headers = &headers
+	}
+	return in
 }
 
 func deref(s *string) string {
