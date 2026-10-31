@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"time"
 
@@ -687,6 +688,7 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 			"port":         d.Config.Settings.Port,
 			"logLevel":     d.Config.Settings.LogLevel,
 			"authRequired": d.Config.Settings.AuthRequired != nil && *d.Config.Settings.AuthRequired,
+			"hasOnboarded": d.Config.Settings.HasOnboarded != nil && *d.Config.Settings.HasOnboarded,
 		})
 	})
 
@@ -718,6 +720,14 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 				SendError(ctx.Res, 400, "日志级别非法")
 				return
 			}
+		}
+		if v, ok := body["hasOnboarded"]; ok && v != nil {
+			b, ok := v.(bool)
+			if !ok {
+				SendError(ctx.Res, 400, "hasOnboarded 非法")
+				return
+			}
+			d.Config.Settings.HasOnboarded = boolPtr(b)
 		}
 		if v, ok := body["authRequired"]; ok && v != nil {
 			b, ok := v.(bool)
@@ -803,6 +813,21 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 
 	// —— 九源 registry 搜索（映射逻辑在 internal/discovery，编排在 registry_search.go） ——
 	registerRegistrySearchRoute(rt, d)
+
+	// —— 设置页配套（autostart/备份恢复/打开数据目录） ——
+	registerSettingsRoutes(rt, d)
+
+	// —— daemon 生命周期（托盘远端模式退出用；token 鉴权由 handle 统一保障） ——
+	rt.Post("/api/daemon/stop", func(ctx *RequestContext) {
+		SendJSON(ctx.Res, 200, map[string]any{"ok": true})
+		go func() {
+			time.Sleep(200 * time.Millisecond) // 让响应先落盘
+			d.Logger.Info("shutdown requested via /api/daemon/stop")
+			_ = d.Stop()
+			RemovePidFile(PidFilePath(d.Store.HomeDir)) // os.Exit 绕过托盘 onExit，这里自己清
+			os.Exit(0)
+		}()
+	})
 
 	// —— Skill 管理（S2，吸收自 cc-switch 的防御性设计；服务在 internal/skills） ——
 	registerSkillRoutes(rt, d)

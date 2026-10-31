@@ -9,3 +9,6 @@ coverage/
 .acceptance/
 .publish-tmp
 awesome-design-md/
+
+# Go 本地构建产物
+*.exe

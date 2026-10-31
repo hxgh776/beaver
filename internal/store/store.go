@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hxgh776/beaver/internal/fsutil"
@@ -136,6 +138,8 @@ type Settings struct {
 	TokenRotatedAt  *string `json:"tokenRotatedAt,omitempty"`
 	AuthRequired    *bool   `json:"authRequired,omitempty"`
 	RegistryBaseURL *string `json:"registryBaseUrl,omitempty"`
+	// HasOnboarded 首启向导标记（M4）；缺失 = 未引导（存量用户以 servers/bindings 非空视作已引导）
+	HasOnboarded *bool `json:"hasOnboarded,omitempty"`
 }
 
 type Config struct {
@@ -287,6 +291,8 @@ func (s *Store) Load() (*Config, error) {
 	return cfg, nil
 }
 
+// Save 持久化配置；写前对旧 config.json 做滚动备份（keep=10）——
+// M4「恢复备份」不只救 agent 配置，也救管理配置本身。
 func (s *Store) Save(config *Config) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -295,7 +301,47 @@ func (s *Store) Save(config *Config) error {
 	if err := enc.Encode(config); err != nil {
 		return err
 	}
-	return fsutil.AtomicWriteFile(s.ConfigPath(), buf.String())
+	data := buf.String()
+	if prev, ok, _ := fsutil.ReadTextIfExists(s.ConfigPath()); ok {
+		_ = s.rollConfigBackup(prev)
+	}
+	return fsutil.AtomicWriteFile(s.ConfigPath(), data)
+}
+
+// configBackupKeep config.json 滚动备份保留份数。
+const configBackupKeep = 10
+
+// ConfigBackupsDir config.json 备份目录（<home>/backups/config）。
+func (s *Store) ConfigBackupsDir() string { return filepath.Join(s.BackupsDir(), "config") }
+
+func (s *Store) rollConfigBackup(prev string) error {
+	dir := s.ConfigBackupsDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	ts := strings.ReplaceAll(strings.ReplaceAll(time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), ":", "-"), ".", "-")
+	if err := os.WriteFile(filepath.Join(dir, "config-"+ts+".json"), []byte(prev), 0o644); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if len(names) <= configBackupKeep {
+			break
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return err
+		}
+		names = names[1:]
+	}
+	return nil
 }
 
 // DecodeConfig 解析并校验 config.json（对应 TS zod configSchema.safeParse）。

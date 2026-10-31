@@ -10,6 +10,7 @@ import { GatewayPage } from './pages/GatewayPage';
 import { LogsPage } from './pages/LogsPage';
 import { DiscoveryPage } from './pages/DiscoveryPage';
 import { SkillsPage } from './pages/SkillsPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 const TABS = [
   { key: 'status', label: '概览', icon: 'status', desc: '守护进程状态、运行环境与本机 Agent' },
@@ -19,6 +20,7 @@ const TABS = [
   { key: 'gateway', label: '聚合网关', icon: 'gateway', desc: '多个 MCP 聚合为一个端点、访问令牌与上游进程' },
   { key: 'logs', label: '调用日志', icon: 'logs', desc: '网关调用记录与上游进程输出' },
   { key: 'skills', label: 'Skill 管理', icon: 'skills', desc: '安装 / 启停 / 更新 SKILL.md 技能，分发到 8 个 agent' },
+  { key: 'settings', label: '设置', icon: 'settings', desc: '端口、开机自启、恢复备份、数据目录与关于' },
 ] as const;
 
 export type TabKey = (typeof TABS)[number]['key'];
@@ -202,6 +204,7 @@ function AppShell() {
           {tab === 'gateway' && <GatewayPage onNavigate={switchTab} />}
           {tab === 'logs' && <LogsPage />}
         {tab === 'skills' && <SkillsPage />}
+          {tab === 'settings' && <SettingsPage />}
         </div>
       </main>
     </div>

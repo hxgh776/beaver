@@ -271,6 +271,28 @@ func (d *Daemon) UptimeSec() int { return int(time.Since(d.startedAt).Seconds())
 // DetectEnvironment S5 环境检测。
 func (d *Daemon) DetectEnvironment() []environment.RuntimeTool { return environment.Detect() }
 
+// agentTargetFile 某 agent 的当前配置写入路径（候选中第一个存在者，否则首候选）。
+func (d *Daemon) agentTargetFile(agentType string) (string, error) {
+	refs := d.syncOpts.Agents
+	if refs == nil {
+		refs = syncengine.DefaultAgentRefs(d.agentRoot)
+	}
+	ref, ok := refs[agentType]
+	if !ok {
+		return "", fmt.Errorf("未知 agent: %s", agentType)
+	}
+	paths := ref.Adapter.CandidatePaths()
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	if len(paths) == 0 {
+		return "", fmt.Errorf("agent %s 无候选配置路径", agentType)
+	}
+	return paths[0], nil
+}
+
 func (d *Daemon) handle(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.RequestURI()
 	u, err := url.Parse(raw)

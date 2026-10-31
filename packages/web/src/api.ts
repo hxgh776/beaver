@@ -228,3 +228,28 @@ export interface SkillCollectionReport {
   installed: SkillWithStatus[];
   failed: Array<{ directory: string; reason: string }>;
 }
+
+// —— 设置页（M4） ——
+
+export interface SettingsInfo {
+  port: number;
+  logLevel: string;
+  authRequired: boolean;
+  hasOnboarded: boolean;
+}
+
+export interface AutostartInfo {
+  installed: boolean;
+  cmdLine?: string;
+}
+
+export interface BackupFileInfo {
+  name: string;
+  size: number;
+  modifiedAt: string;
+}
+
+export interface BackupGroups {
+  groups: Array<{ agentType: string; files: BackupFileInfo[] }>;
+  configBackups: BackupFileInfo[];
+}

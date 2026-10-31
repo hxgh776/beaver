@@ -107,3 +107,16 @@ test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载'
   await page.getByRole('button', { name: '卸载' }).last().click();
   await expect(page.getByText(/已卸载/)).toBeVisible({ timeout: 15000 });
 });
+
+test('E-10 设置页：常规项、恢复备份区与关于可见', async ({ page }) => {
+  await auth(page);
+  await page.getByTestId('tab-settings').click();
+  await expect(page.getByTestId('settings-port')).toBeVisible();
+  await expect(page.getByTestId('settings-loglevel')).toBeVisible();
+  // 卡片标题精确匹配（页头描述也含这两个词，strict mode 需 exact）
+  await expect(page.getByText('恢复备份', { exact: true })).toBeVisible();
+  await expect(page.getByText('关于', { exact: true })).toBeVisible();
+  // 端口输入回显当前配置端口（非空数字）
+  const port = await page.getByTestId('settings-port').inputValue();
+  expect(Number(port)).toBeGreaterThan(0);
+});

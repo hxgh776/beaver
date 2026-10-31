@@ -1,8 +1,8 @@
 //go:build !windows
 
-package main
+package autostart
 
 import "os/exec"
 
 // hideWindow 非 Windows 无窗口概念，占位。
-func hideWindow(c *exec.Cmd) {}
+func HideWindow(c *exec.Cmd) {}

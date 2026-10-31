@@ -1,4 +1,4 @@
-package main
+package autostart
 
 // 开机自启：登录时静默拉起 `beaver start`（start 本身幂等，已在运行则直接返回）。
 // Windows：HKCU Run 键 + wscript 隐藏窗口包装（用户级，免管理员）；
@@ -24,7 +24,8 @@ const (
 )
 
 // exePath CLI 真实入口（符号链接解析到实际文件）。
-func exePath() string {
+// ExePath CLI 真实入口（符号链接解析到实际文件）。
+func ExePath() string {
 	raw, err := os.Executable()
 	if err != nil {
 		return ""
@@ -44,7 +45,7 @@ func startArgs(homeOverride string) []string {
 }
 
 func vbsPath() string {
-	return filepath.Join(filepath.Dir(exePath()), "beaver-autostart.vbs")
+	return filepath.Join(filepath.Dir(ExePath()), "beaver-autostart.vbs")
 }
 
 func macPlistPath() string {
@@ -60,7 +61,7 @@ func linuxUnitPath() string {
 func run(cmd string, args []string, quiet bool) (bool, string) {
 	c := exec.Command(cmd, args...)
 	c.Env = append(os.Environ(), "WINDIR="+os.Getenv("WINDIR"))
-	hideWindow(c)
+	HideWindow(c)
 	out, err := c.CombinedOutput()
 	if err != nil && !quiet {
 		return false, string(out)
@@ -73,8 +74,49 @@ func escapeXML(s string) string {
 	return r.Replace(s)
 }
 
+// Install 安装开机自启；返回写入自启条目的命令行（用于回显）。
+func Install(homeOverride string) (string, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return installWindows(homeOverride)
+	case "darwin":
+		return installMacos(homeOverride)
+	case "linux":
+		return installLinux(homeOverride)
+	}
+	return "", fmt.Errorf("暂不支持的平台: %s（自启支持 Windows / macOS / Linux）", runtime.GOOS)
+}
+
+// Uninstall 移除开机自启。
+func Uninstall() error {
+	switch runtime.GOOS {
+	case "windows":
+		return uninstallWindows()
+	case "darwin":
+		return uninstallMacos()
+	case "linux":
+		return uninstallLinux()
+	}
+	return nil
+}
+
+// IsInstalled 查询自启安装状态。
+func IsInstalled() bool {
+	switch runtime.GOOS {
+	case "windows":
+		return isInstalledWindows()
+	case "darwin":
+		_, err := os.Stat(macPlistPath())
+		return err == nil
+	case "linux":
+		_, err := os.Stat(linuxUnitPath())
+		return err == nil
+	}
+	return false
+}
+
 func installWindows(homeOverride string) (string, error) {
-	exe := exePath()
+	exe := ExePath()
 	if exe == "" {
 		return "", fmt.Errorf("解析自身可执行文件失败")
 	}
@@ -107,7 +149,7 @@ func isInstalledWindows() bool {
 }
 
 func installMacos(homeOverride string) (string, error) {
-	exe := exePath()
+	exe := ExePath()
 	plistPath := macPlistPath()
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		return "", err
@@ -150,7 +192,7 @@ func uninstallMacos() error {
 }
 
 func installLinux(homeOverride string) (string, error) {
-	exe := exePath()
+	exe := ExePath()
 	unitPath := linuxUnitPath()
 	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {
 		return "", err
@@ -187,69 +229,4 @@ func uninstallLinux() error {
 	_ = os.Remove(linuxUnitPath())
 	run("systemctl", []string{"--user", "daemon-reload"}, true)
 	return nil
-}
-
-func cmdAutostart(args []string) error {
-	sub := "status"
-	if len(args) > 0 {
-		sub = args[0]
-	}
-	switch sub {
-	case "on":
-		var cmdline string
-		var err error
-		switch runtime.GOOS {
-		case "windows":
-			cmdline, err = installWindows(homeOverride)
-		case "darwin":
-			cmdline, err = installMacos(homeOverride)
-		case "linux":
-			cmdline, err = installLinux(homeOverride)
-		default:
-			return fmt.Errorf("暂不支持的平台: %s（自启支持 Windows / macOS / Linux）", runtime.GOOS)
-		}
-		if err != nil {
-			return err
-		}
-		fmt.Println("已安装开机自启，下次登录自动拉起 daemon")
-		fmt.Printf("  %s\n", cmdline)
-		fmt.Println("  撤销: beaver autostart off")
-		return nil
-	case "off":
-		switch runtime.GOOS {
-		case "windows":
-			err := uninstallWindows()
-			fmt.Println("已移除开机自启")
-			return err
-		case "darwin":
-			err := uninstallMacos()
-			fmt.Println("已移除开机自启")
-			return err
-		case "linux":
-			err := uninstallLinux()
-			fmt.Println("已移除开机自启")
-			return err
-		}
-		return nil
-	case "status":
-		installed := false
-		switch runtime.GOOS {
-		case "windows":
-			installed = isInstalledWindows()
-		case "darwin":
-			_, err := os.Stat(macPlistPath())
-			installed = err == nil
-		case "linux":
-			_, err := os.Stat(linuxUnitPath())
-			installed = err == nil
-		}
-		if installed {
-			fmt.Println("已安装")
-		} else {
-			fmt.Println("未安装（beaver autostart on 安装）")
-		}
-		return nil
-	default:
-		return fmt.Errorf("未知子命令: autostart %s", sub)
-	}
 }
