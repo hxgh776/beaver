@@ -384,6 +384,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
       port: daemon.config.settings.port,
       logLevel: daemon.config.settings.logLevel,
       authRequired: daemon.config.settings.authRequired === true,
+      hasOnboarded: daemon.config.settings.hasOnboarded === true,
     });
   });
 
@@ -392,7 +393,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
   });
 
   router.patch('/api/settings', async (ctx) => {
-    const body = (await ctx.body()) as { port?: number; logLevel?: string; authRequired?: boolean };
+    const body = (await ctx.body()) as { port?: number; logLevel?: string; authRequired?: boolean; hasOnboarded?: boolean };
     if (body.port !== undefined) {
       if (!Number.isInteger(body.port) || body.port < 1 || body.port > 65535) {
         return sendError(ctx.res, 400, '端口非法');
@@ -412,6 +413,9 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
       if (daemon.config.bindings.length > 0) {
         daemon.config.settings.tokenRotatedAt = new Date().toISOString();
       }
+    }
+    if (body.hasOnboarded !== undefined) {
+      daemon.config.settings.hasOnboarded = body.hasOnboarded === true;
     }
     await save();
     sendJson(ctx.res, 200, { ok: true });

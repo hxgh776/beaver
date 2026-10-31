@@ -86,6 +86,8 @@ export interface Settings {
   authRequired?: boolean;
   /** M3.6：官方 registry 基地址（默认 registry.modelcontextprotocol.io；可换镜像）。 */
   registryBaseUrl?: string;
+  /** M4：首启向导标记。缺失 = 未引导；存量用户以 servers/bindings 非空视作已引导。 */
+  hasOnboarded?: boolean;
 }
 
 export interface ManagerConfig {

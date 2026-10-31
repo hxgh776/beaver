@@ -11,6 +11,7 @@ import { LogsPage } from './pages/LogsPage';
 import { DiscoveryPage } from './pages/DiscoveryPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { OnboardingPage } from './pages/OnboardingPage';
 
 const TABS = [
   { key: 'status', label: '概览', icon: 'status', desc: '守护进程状态、运行环境与本机 Agent' },
@@ -92,6 +93,20 @@ function AppShell() {
   const unauthorized = status.error instanceof ApiError && status.error.status === 401;
   const needsGate = authRequired && (!authed || unauthorized);
 
+  // M4 首启向导：settings.hasOnboarded 缺失且注册表为空 → 全新用户见向导；
+  // servers/bindings 非空视作已引导（npm 老用户升级不被绑架）
+  const settings = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get<{ hasOnboarded: boolean }>('/api/settings'),
+    enabled: authed || !authRequired,
+  });
+  const needsOnboarding =
+    (authed || !authRequired) &&
+    status.data !== undefined &&
+    settings.data !== undefined &&
+    settings.data.hasOnboarded !== true &&
+    status.data.serverCount + status.data.bindingCount === 0;
+
   const switchTab = (key: TabKey): void => {
     setTab(key);
     const url = new URL(window.location.href);
@@ -115,6 +130,18 @@ function AppShell() {
           void queryClient.invalidateQueries();
         }}
       />
+    );
+  }
+
+  if (needsOnboarding) {
+    return (
+      <ToastProvider>
+        <OnboardingPage
+          onDone={() => {
+            void queryClient.invalidateQueries();
+          }}
+        />
+      </ToastProvider>
     );
   }
 

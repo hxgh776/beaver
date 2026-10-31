@@ -1,0 +1,77 @@
+name: Go Desktop Build
+
+# 桌面版单文件构建矩阵（docs/desktop-plan.md §7）。
+# 仅手动触发——发布/上传 Release 必须由用户操作，workflow 永不自动 publish。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（注入 ldflags；如 0.1.0）'
+        required: false
+        default: '0.1.0'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+            ext: .exe
+            pack: zip
+          - os: ubuntu-latest
+            target: linux-x64
+            ext: ''
+            pack: tar
+          - os: macos-latest
+            target: macos-arm64
+            ext: ''
+            pack: tar
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ inputs.version || '0.1.0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+      - name: 构建 Web UI 并同步到 embed
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @beaver/web build
+          node scripts/sync-web-dist.mjs
+      - name: 构建 beaver 单文件
+        env:
+          GOFLAGS: -trimpath
+          CGO_ENABLED: '0'
+        shell: bash
+        run: |
+          NAME="beaver-v${VERSION}-${{ matrix.target }}${{ matrix.ext }}"
+          go build -ldflags "-s -w -X github.com/hxgh776/beaver/internal/version.value=${VERSION}" -o "$NAME" ./cmd/beaver
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+      - name: 打包
+        shell: bash
+        run: |
+          if [ "${{ matrix.pack }}" = "zip" ]; then
+            7z a "${NAME}.zip" "$NAME"
+          else
+            tar czf "${NAME}.tar.gz" "$NAME"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beaver-${{ matrix.target }}
+          path: |
+            beaver-v*/
+          if-no-files-found: error

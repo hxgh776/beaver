@@ -22,7 +22,33 @@ async function auth(page: import('@playwright/test').Page): Promise<void> {
     await page.getByTestId('token-input').fill(daemon.token);
     await page.getByTestId('token-submit').click();
   }
+  // 全新沙箱会先见首启向导——常规用例跳过进面板（向导本身由 E-11 专测）
+  const skip = page.getByTestId('wizard-skip');
+  if ((await skip.count()) > 0) {
+    await skip.click();
+    await expect(page.getByTestId('sidebar')).toBeVisible();
+  }
 }
+
+test('E-11 首启向导：三步可见、跳过后面板可达且不再出现', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('欢迎使用 Beaver')).toBeVisible();
+  // 第 1 步：探测
+  await expect(page.getByTestId('wizard-next-1')).toBeVisible();
+  await page.getByTestId('wizard-next-1').click();
+  // 第 2 步：导入（空沙箱可跳过）
+  await expect(page.getByText('导入现有 MCP server')).toBeVisible();
+  await page.getByText('跳过导入').click();
+  // 第 3 步：同步
+  await expect(page.getByTestId('wizard-dry-run')).toBeVisible();
+  await page.getByTestId('wizard-sync').click().catch(() => {});
+  // 立即同步在空注册表也应安全完成（无变更）→ 面板
+  await expect(page.getByTestId('sidebar')).toBeVisible({ timeout: 15_000 });
+  // 刷新后不再出现向导（hasOnboarded 已持久化）
+  await page.reload();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+  await expect(page.getByTestId('wizard-skip')).toHaveCount(0);
+});
 
 test('E-01 token 门进入后可见概览与本机 agent 卡片', async ({ page }) => {
   await auth(page);

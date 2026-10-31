@@ -82,6 +82,7 @@ const configSchema = z.object({
     tokenRotatedAt: z.string().optional(),
     authRequired: z.boolean().optional(),
     registryBaseUrl: z.string().optional(),
+    hasOnboarded: z.boolean().optional(),
   }),
 });
 

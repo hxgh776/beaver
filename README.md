@@ -66,6 +66,20 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 
 ## 🚀 快速开始
 
+### 方式 A：桌面版（Go 单文件，免 Node）
+
+到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe` 等），双击或：
+
+```bash
+beaver start      # daemon 后台常驻 + Web 面板
+beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 自启开关
+beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
+```
+
+> **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。运行后从系统托盘或浏览器进入面板，跟着**首启向导**（探测 → 导入 → 同步）三步完成接入。
+
+### 方式 B：npm 渠道（当前发行态）
+
 ```bash
 npm install -g @hxgh776/beaver
 dam start                     # daemon 后台常驻
@@ -92,9 +106,11 @@ dam sync [--dry-run]   # 分发到各 agent
 dam gateway status | start | stop
 dam bridge <url> --token xxx    # stdio 反向桥（供 stdio agent 连远程端点）
 dam autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗口；macOS: LaunchAgent；Linux: systemd user unit）
+dam tray               # 托盘常驻（Go 版）：面板 / 网关开关 / 立即同步 / 自启开关
+dam open               # 用 Edge/Chrome 独立应用窗口打开面板（Go 版）
 ```
 
-> `beaver` 是同一命令的全名别名（`beaver start` = `dam start`）。
+> npm 版命令为 `dam`；Go 桌面版二进制名为 `beaver`，子命令一致（`beaver start` = `dam start`）。
 
 ## 🤖 支持的 Agent
 
@@ -148,12 +164,24 @@ cd e2e && pnpm i && npx playwright install chromium && pnpm test
 
 > 所有自动化测试通过沙箱目录重定向，**绝不读写真实 agent 配置**。
 
+**Go 后端**（桌面版所在，业务逻辑与 TS 版 1:1 对拍移植）：
+
+```bash
+go build ./cmd/beaver                                   # 单文件 CLI + daemon + 托盘
+go test ./...                                           # 128 个 Go 用例（含真实 stdio/HTTP 上游网关链路）
+pnpm build:go-web                                       # Web 构建产物同步进 go:embed（internal/webui/dist）
+export GOPROXY=https://goproxy.cn,direct                # 国内代理（CI 无需）
+BEAVER_E2E_BIN=./beaver (cd e2e && npx playwright test) # 同一 Playwright 套件对拍 Go daemon
+```
+
+版本号单点在 `internal/version/version.go`，CI 以 `-ldflags -X ...value=<tag>` 注入。
+
 ## 🗺 Roadmap
 
 - [x] ~~发布到 npm~~（`npm i -g @hxgh776/beaver`）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
-- [ ] 桌面化交付（单文件 exe + 托盘 + 设置页 + 首启向导，[方案](docs/desktop-plan.md)）
+- [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 全规格面板窗口 + 设置页 + 首启向导；二进制经 go-build workflow 手动产出，[方案](docs/desktop-plan.md)）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密
