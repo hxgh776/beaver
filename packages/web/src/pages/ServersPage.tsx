@@ -8,6 +8,49 @@ import type { TabKey } from '../App';
 /** 每页 server 卡片数：3 列 × 2 行，配卡片头部的数字分页切换 */
 const SERVER_PAGE_SIZE = 6;
 
+/** 新增弹窗的内置样例：常见 MCP server 的推荐启动配置（选中即填充表单，可再手改） */
+interface ServerTemplate {
+  key: string;
+  name: string;
+  desc: string;
+  transport: 'stdio' | 'http';
+  command?: string;
+  args?: string;
+  url?: string;
+  /** 套用后提醒用户还需补充的内容 */
+  note?: string;
+}
+
+const TEMPLATES: ServerTemplate[] = [
+  { key: 'context7', name: 'Context7', desc: '查库/框架的最新版文档', transport: 'stdio', command: 'npx', args: '-y @upstash/context7-mcp' },
+  { key: 'filesystem', name: 'Filesystem', desc: '读写指定目录的本地文件', transport: 'stdio', command: 'npx', args: '-y @modelcontextprotocol/server-filesystem <你的目录>', note: '把最后一个参数 <你的目录> 改成实际路径' },
+  { key: 'fetch', name: 'Fetch', desc: '抓取网页并转为 markdown', transport: 'stdio', command: 'uvx', args: 'mcp-server-fetch' },
+  { key: 'memory', name: 'Memory', desc: '跨会话长期记忆（知识图谱）', transport: 'stdio', command: 'npx', args: '-y @modelcontextprotocol/server-memory' },
+  { key: 'sequential-thinking', name: 'Sequential Thinking', desc: '分步推理与任务规划', transport: 'stdio', command: 'npx', args: '-y @modelcontextprotocol/server-sequential-thinking' },
+  { key: 'git', name: 'Git', desc: '读取 / 检索本地 Git 仓库', transport: 'stdio', command: 'uvx', args: 'mcp-server-git' },
+  { key: 'everything', name: 'Everything', desc: '官方演示 server，验证链路用', transport: 'stdio', command: 'npx', args: '-y @modelcontextprotocol/server-everything' },
+  { key: 'deepwiki', name: 'DeepWiki', desc: '开源仓库结构化问答（远程）', transport: 'http', url: 'https://mcp.deepwiki.com/mcp' },
+];
+
+/** 按空格拆分参数；支持单/双引号包裹含空格的片段（如 "D:\my dir"），也兼容每行一个参数 */
+function splitArgs(text: string): string[] {
+  const out: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      const piece = m[1] ?? m[2] ?? m[3] ?? '';
+      if (piece !== '') out.push(piece);
+    }
+  }
+  return out;
+}
+
+/** 回填表单时把含空格的参数包上引号，保证 splitArgs 能还原 */
+function quoteArg(a: string): string {
+  return /\s/.test(a) ? `"${a}"` : a;
+}
+
 interface FormState {
   id?: string;
   name: string;
@@ -47,7 +90,7 @@ function toForm(s: ServerDefDTO): FormState {
     name: s.name,
     transport: s.transport,
     command: s.command ?? '',
-    args: (s.args ?? []).join(' '),
+    args: (s.args ?? []).map(quoteArg).join(' '),
     env: Object.entries(s.env ?? {})
       .map(([k, v]) => `${k}=${v}`)
       .join('\n'),
@@ -104,7 +147,7 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
       };
       if (f.transport === 'stdio') {
         body['command'] = f.command;
-        body['args'] = f.args.split(/\s+/).filter(Boolean);
+        body['args'] = splitArgs(f.args);
         const env: Record<string, string> = {};
         for (const line of f.env.split('\n')) {
           const idx = line.indexOf('=');
@@ -147,6 +190,11 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
 
   const list = servers.data?.servers ?? [];
   const kw = filter.trim().toLowerCase();
+  /** 保存前置校验：名称必填；stdio 需要命令，http/sse 需要 URL */
+  const canSave =
+    form !== null &&
+    form.name.trim() !== '' &&
+    (form.transport === 'stdio' ? form.command.trim() !== '' : form.url.trim() !== '');
   const shown =
     kw === ''
       ? list
@@ -181,7 +229,7 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
         {list.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
             <Icon name="servers" className="h-8 w-8 text-slate-300" />
-            <p className="text-sm text-slate-400">还没有 server——从发现页一键收录，或导入现有 agent 配置。</p>
+            <p className="text-sm text-slate-400">还没有 server——点「添加 Server」从内置样例一键开始，或到发现页收录 / 导入现有配置。</p>
             <div className="flex gap-2">
               <Btn small kind="primary" onClick={() => onNavigate?.('discovery')}>
                 去「MCP 发现」
@@ -272,7 +320,13 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
           footer={
             <>
               <Btn onClick={() => setForm(null)}>取消</Btn>
-              <Btn kind="primary" testId="form-save" disabled={save.isPending} onClick={() => save.mutate(form)}>
+              <Btn
+                kind="primary"
+                testId="form-save"
+                disabled={save.isPending || !canSave}
+                title={canSave ? undefined : '请先填写名称，以及启动入口（命令或 URL）'}
+                onClick={() => save.mutate(form)}
+              >
                 {save.isPending ? '保存中…' : '保存'}
               </Btn>
             </>
@@ -303,15 +357,87 @@ function RuntimeBadge({ status }: { status: string }) {
   return <Badge tone="gray">未运行</Badge>;
 }
 
+/** 新增时的样例区：点一张卡即填充下方表单；编辑已有 server 时不显示 */
+function TemplateGrid({ appliedKey, onPick }: { appliedKey: string | null; onPick: (t: ServerTemplate) => void }) {
+  const applied = TEMPLATES.find((t) => t.key === appliedKey);
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+      <p className="mb-2 text-xs font-medium text-slate-500">从样例开始——点一张卡片自动填充下方表单，再按需微调：</p>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {TEMPLATES.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            data-testid={`tpl-${t.key}`}
+            title={t.desc}
+            onClick={() => onPick(t)}
+            className={`rounded-lg border px-2.5 py-1.5 text-left transition ${
+              appliedKey === t.key
+                ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
+                : 'border-slate-200 bg-white hover:border-brand-400 hover:shadow-card-hover'
+            }`}
+          >
+            <span className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+              <span className="truncate">{t.name}</span>
+              {t.transport === 'http' && <Badge tone="blue">远程</Badge>}
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] leading-tight text-slate-400">{t.desc}</span>
+          </button>
+        ))}
+      </div>
+      {applied?.note !== undefined && (
+        <p className="mt-2 text-xs text-amber-600">已套用 {applied.name}：{applied.note}</p>
+      )}
+    </div>
+  );
+}
+
+/** 分发模式的两个可选卡片：代替之前的单个开关——关=直连、开=网关的开关语义太难懂 */
+function ModeCard(props: { selected: boolean; testId: string; title: string; desc: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid={props.testId}
+      onClick={props.onClick}
+      className={`rounded-xl border px-3 py-2.5 text-left transition ${
+        props.selected
+          ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
+          : 'border-slate-200 bg-white hover:border-slate-300'
+      }`}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+        {props.title}
+        {props.selected && <Icon name="check" className="h-3.5 w-3.5 text-brand-600" />}
+      </span>
+      <span className="mt-1 block text-xs leading-relaxed text-slate-500">{props.desc}</span>
+    </button>
+  );
+}
+
 function ServerForm({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
   const f = form;
+  const [appliedTpl, setAppliedTpl] = useState<string | null>(null);
   const set = (patch: Partial<FormState>): void => setForm({ ...f, ...patch });
+  const applyTemplate = (t: ServerTemplate): void => {
+    setAppliedTpl(t.key);
+    setForm({
+      ...f,
+      name: t.name,
+      transport: t.transport,
+      command: t.command ?? '',
+      args: t.args ?? '',
+      url: t.url ?? '',
+      // 远程类默认走网关（凭证不落地），本地类保持直连
+      gatewayMode: t.transport === 'http' ? true : f.gatewayMode,
+    });
+  };
   return (
     <div>
+      {f.id === undefined && <TemplateGrid appliedKey={appliedTpl} onPick={applyTemplate} />}
       <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
         <div>
-          <Field label="名称">
-            <input data-testid="form-name" className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} />
+          <Field label="名称" hint="保存时自动按名称生成 ID（即 agent 配置里的 server 键名）">
+            <input data-testid="form-name" className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="如：context7" />
           </Field>
           <Field label="传输类型">
             <select
@@ -322,50 +448,64 @@ function ServerForm({ form, setForm }: { form: FormState; setForm: (f: FormState
             >
               <option value="stdio">stdio（本机进程）</option>
               <option value="http">http（远程 streamable）</option>
-              <option value="sse">sse（远程，legacy）</option>
+              <option value="sse">sse（远程，旧协议）</option>
             </select>
           </Field>
           {f.transport === 'stdio' ? (
             <>
               <Field label="命令">
-                <input data-testid="form-command" className={inputCls} value={f.command} onChange={(e) => set({ command: e.target.value })} placeholder="npx" />
+                <input data-testid="form-command" className={inputCls} value={f.command} onChange={(e) => set({ command: e.target.value })} placeholder="npx / uvx / node…" />
               </Field>
-              <Field label="参数（空格分隔）">
-                <input data-testid="form-args" className={inputCls} value={f.args} onChange={(e) => set({ args: e.target.value })} placeholder="-y @modelcontextprotocol/server-filesystem D:\proj" />
+              <Field label="参数（空格分隔）" hint="含空格的路径用引号包裹，如 -y server-filesystem &quot;D:\my dir&quot;">
+                <input data-testid="form-args" className={inputCls} value={f.args} onChange={(e) => set({ args: e.target.value })} placeholder="-y @upstash/context7-mcp" />
               </Field>
-              <Field label="环境变量（每行 KEY=value）" hint="保存后自动加密（Windows DPAPI）；网关模式下不会写入 agent 配置">
-                <textarea data-testid="form-env" className={`${inputCls} h-24 font-mono`} value={f.env} onChange={(e) => set({ env: e.target.value })} />
-              </Field>
-              <Field label="并发度（1-16）" hint="stdio 上游同时进行的工具调用数；1 最安全，支持并发的 server 可调高">
-                <input
-                  data-testid="form-concurrency"
-                  type="number"
-                  min={1}
-                  max={16}
-                  className={inputCls}
-                  value={f.concurrency}
-                  onChange={(e) => set({ concurrency: e.target.value })}
-                />
+              <Field label="环境变量（每行 KEY=value）" hint="保存后静态加密（Windows DPAPI）；网关模式下不会写入 agent 配置。例：API_KEY=sk-xxx">
+                <textarea data-testid="form-env" className={`${inputCls} h-24 font-mono`} value={f.env} onChange={(e) => set({ env: e.target.value })} placeholder={'API_KEY=sk-xxx\nBASE_URL=https://…'} />
               </Field>
             </>
           ) : (
-            <Field label="URL">
+            <Field label="URL" hint="streamable HTTP 端点一般以 /mcp 结尾；sse 仅在 server 只支持旧协议时使用。">
               <input data-testid="form-url" className={inputCls} value={f.url} onChange={(e) => set({ url: e.target.value })} placeholder="https://example.com/mcp" />
             </Field>
           )}
         </div>
         <div>
-          <Field label="分发模式">
-            <Toggle
-              testId="form-gateway"
-              checked={f.gatewayMode}
-              onChange={(v) => set({ gatewayMode: v })}
-              label="网关模式（agent 侧只写一条指向网关的配置，凭证不落地）"
-            />
+          <Field label="分发模式" hint={f.gatewayMode
+            ? '当前：网关。Beaver 常驻代理此 server，凭证只留在本地。'
+            : '当前：直连。配置原文写入各 agent，Beaver 不参与运行。'}>
+            <div className="grid grid-cols-1 gap-2">
+              <ModeCard
+                selected={!f.gatewayMode}
+                testId="form-direct"
+                title="直连模式"
+                desc="把完整配置写进各 agent 的配置文件，进程由各 agent 自己拉起。适合本地文件 / 终端类 server。"
+                onClick={() => set({ gatewayMode: false })}
+              />
+              <ModeCard
+                selected={f.gatewayMode}
+                testId="form-gateway"
+                title="网关模式"
+                desc="agent 侧只写一条指向本地网关的 URL：凭证不落地，工具可逐个开关。适合远程 / 工具多的 server。"
+                onClick={() => set({ gatewayMode: true })}
+              />
+            </div>
           </Field>
-          <Field label="启用">
-            <Toggle checked={f.enabled} onChange={(v) => set({ enabled: v })} label="参与分发与网关聚合" />
+          <Field label="启用" hint="关闭 = 临时下线：不分发进 agent、不出现在网关端点；配置保留，随时可再打开。">
+            <Toggle testId="form-enabled" checked={f.enabled} onChange={(v) => set({ enabled: v })} label="分发到各 agent，并在网关端点中提供" />
           </Field>
+          {f.transport === 'stdio' && (
+            <Field label="并发度（1-16）" hint="仅网关模式生效：此上游同时处理的工具调用数，1 最安全；直连模式下进程由 agent 自己管理，此项无效。">
+              <input
+                data-testid="form-concurrency"
+                type="number"
+                min={1}
+                max={16}
+                className={inputCls}
+                value={f.concurrency}
+                onChange={(e) => set({ concurrency: e.target.value })}
+              />
+            </Field>
+          )}
         </div>
       </div>
     </div>
