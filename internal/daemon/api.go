@@ -5,6 +5,7 @@ package daemon
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/hxgh776/beaver/internal/adapters"
 	"github.com/hxgh776/beaver/internal/registry"
 	"github.com/hxgh776/beaver/internal/secretbox"
+	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
 )
 
@@ -799,39 +801,188 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 		SendJSON(ctx.Res, 200, status)
 	})
 
-	// —— 九源 registry 搜索（M2 移植 core 后开放） ——
-	rt.Get("/api/registry/search", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "registry 搜索尚未在 Go 版实现（M2 移植中），请使用 npm 版 dam 或稍后升级")
+	// —— 九源 registry 搜索（映射逻辑在 internal/discovery，编排在 registry_search.go） ——
+	registerRegistrySearchRoute(rt, d)
+
+	// —— Skill 管理（S2，吸收自 cc-switch 的防御性设计；服务在 internal/skills） ——
+	registerSkillRoutes(rt, d)
+}
+
+// registerSkillRoutes skills 全量路由（对齐 TS api.ts 的 skills 段响应形状）。
+func registerSkillRoutes(rt *Router, d *Daemon) {
+	asSkillAgents := func(list []string) []string {
+		out := []string{}
+		for _, a := range list {
+			for _, valid := range skills.SkillAgentList {
+				if a == valid {
+					out = append(out, a)
+					break
+				}
+			}
+		}
+		return out
+	}
+
+	rt.Get("/api/skills", func(ctx *RequestContext) {
+		list, err := d.Skills.List()
+		if err != nil {
+			SendError(ctx.Res, 500, err.Error())
+			return
+		}
+		SendJSON(ctx.Res, 200, map[string]any{"skills": list, "ssotDir": d.Skills.SkillsDir()})
 	})
 
-	// —— Skill 管理（M2 移植 core 后开放） ——
-	rt.Get("/api/skills", func(ctx *RequestContext) {
-		SendJSON(ctx.Res, 200, map[string]any{"skills": []any{}, "ssotDir": ""})
+	rt.Get("/api/skills/search", func(ctx *RequestContext) {
+		q := ctx.Query.Get("q")
+		limit := clampInt(parseIntOr(ctx.Query.Get("limit"), 20), 1, 50)
+		offset := maxInt(parseIntOr(ctx.Query.Get("offset"), 0), 0)
+		result, err := d.Skills.Search(ctx.Req.Context(), q, limit, offset)
+		if err != nil {
+			SendError(ctx.Res, 502, err.Error(), "SKILLS_SH_DOWN")
+			return
+		}
+		SendJSON(ctx.Res, 200, result)
 	})
-	rt.Any("/api/skills/search", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+
+	rt.Post("/api/skills/install", func(ctx *RequestContext) {
+		body, err := ctx.Body()
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		repo, _ := body["repo"].(string)
+		if len(repo) < 3 {
+			SendError(ctx.Res, 400, "仓库坐标不能为空")
+			return
+		}
+		skill, _ := body["skill"].(string)
+		branch, _ := body["branch"].(string)
+		enableFor := asSkillAgents(strList(body["enableFor"]))
+		row, err := d.Skills.InstallFromRepo(ctx.Req.Context(), repo, skill, branch, enableFor)
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_INSTALL_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, map[string]any{"skill": row})
 	})
-	rt.Any("/api/skills/install", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+
+	// 集合安装：一次下载仓库归档，收编全部含 SKILL.md 的目录；单技能冲突跳过不中断
+	rt.Post("/api/skills/install-collection", func(ctx *RequestContext) {
+		body, err := ctx.Body()
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		repo, _ := body["repo"].(string)
+		if len(repo) < 3 {
+			SendError(ctx.Res, 400, "仓库坐标不能为空")
+			return
+		}
+		branch, _ := body["branch"].(string)
+		enableFor := asSkillAgents(strList(body["enableFor"]))
+		report, err := d.Skills.InstallCollectionFromRepo(ctx.Req.Context(), repo, branch, enableFor)
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_INSTALL_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, report)
 	})
-	rt.Any("/api/skills/install-collection", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+
+	rt.Post("/api/skills/install-zip", func(ctx *RequestContext) {
+		body, err := ctx.Body()
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		contentB64, _ := body["contentBase64"].(string)
+		if len(contentB64) < 8 {
+			SendError(ctx.Res, 400, "缺少 ZIP 内容")
+			return
+		}
+		zip, err := base64.StdEncoding.DecodeString(contentB64)
+		if err != nil || len(zip) == 0 {
+			SendError(ctx.Res, 400, "ZIP 内容为空")
+			return
+		}
+		skill, _ := body["skill"].(string)
+		enableFor := asSkillAgents(strList(body["enableFor"]))
+		if b, ok := body["collection"].(bool); ok && b {
+			report, err := d.Skills.InstallCollectionFromLocalZip(zip, enableFor)
+			if err != nil {
+				SendError(ctx.Res, 400, err.Error(), "SKILL_INSTALL_FAILED")
+				return
+			}
+			SendJSON(ctx.Res, 200, map[string]any{"report": report})
+			return
+		}
+		row, err := d.Skills.InstallFromLocalZip(zip, skill, enableFor)
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_INSTALL_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, map[string]any{"skill": row})
 	})
-	rt.Any("/api/skills/install-zip", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
-	})
-	rt.Any("/api/skills/updates", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
-	})
+
 	rt.Post("/api/skills/:id/toggle", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+		body, err := ctx.Body()
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		agentType, _ := body["agentType"].(string)
+		enabled, _ := body["enabled"].(bool)
+		if agentType == "" {
+			SendError(ctx.Res, 400, "agentType 不能为空")
+			return
+		}
+		result, err := d.Skills.Toggle(ctx.Params["id"], agentType, enabled)
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_TOGGLE_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, result)
 	})
+
+	rt.Get("/api/skills/updates", func(ctx *RequestContext) {
+		report, err := d.Skills.CheckUpdates(ctx.Req.Context())
+		if err != nil {
+			SendError(ctx.Res, 500, err.Error(), "SKILL_CHECK_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, report)
+	})
+
 	rt.Post("/api/skills/:id/update", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+		row, err := d.Skills.Update(ctx.Req.Context(), ctx.Params["id"])
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_UPDATE_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, map[string]any{"skill": row})
 	})
+
 	rt.Delete("/api/skills/:id", func(ctx *RequestContext) {
-		SendError(ctx.Res, 501, "skills 服务尚未在 Go 版实现（M2 移植中）")
+		result, err := d.Skills.Uninstall(ctx.Params["id"])
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_UNINSTALL_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, result)
 	})
+}
+
+func strList(v any) []string {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, x := range list {
+		if s, ok := x.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func controlUpstream(d *Daemon, ctx *RequestContext, action string) {

@@ -18,6 +18,7 @@ import (
 	"github.com/hxgh776/beaver/internal/adapters"
 	"github.com/hxgh776/beaver/internal/environment"
 	"github.com/hxgh776/beaver/internal/registry"
+	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
 	"github.com/hxgh776/beaver/internal/syncengine"
 	"github.com/hxgh776/beaver/internal/webui"
@@ -92,6 +93,8 @@ type Daemon struct {
 	GatewayControl  GatewayControlHook
 	GatewayHTTP     GatewayHTTPHook
 	GatewayStatusFn GatewayStatusHook
+	// Skills 技能管理服务（M2）
+	Skills *skills.Service
 	// GatewaySnapshots 上游运行态快照（网关注入）
 	GatewaySnapshots func() any
 	UpstreamControl  UpstreamControlHook
@@ -146,6 +149,12 @@ func New(opts Options) *Daemon {
 	} else if opts.HomeDir != "" || os.Getenv("AGENT_CONTROL_HOME") != "" || os.Getenv("MCP_MANAGER_HOME") != "" {
 		logger.Warn("数据目录已重定向但 agent 配置仍指向真实用户主目录——测试场景请传 agentConfigRoot")
 	}
+	d.Skills = skills.NewService(skills.ServiceOptions{
+		HomeDir:    st.HomeDir,
+		GetConfig:  func() *store.Config { return d.Config },
+		SaveConfig: func() error { return d.SaveConfig() },
+		AgentRoot:  agentRoot,
+	})
 	return d
 }
 
