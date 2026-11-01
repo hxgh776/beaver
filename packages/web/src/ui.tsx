@@ -37,7 +37,7 @@ export function Card({
 export function Btn(props: {
   children: ReactNode;
   onClick?: () => void;
-  kind?: 'primary' | 'default' | 'danger';
+  kind?: 'primary' | 'default' | 'danger' | 'danger-outline';
   disabled?: boolean;
   testId?: string;
   small?: boolean;
@@ -49,7 +49,9 @@ export function Btn(props: {
       ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/25 hover:bg-brand-600 active:bg-brand-700'
       : props.kind === 'danger'
         ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/20 hover:bg-rose-600 active:bg-rose-700'
-        : 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900';
+        : props.kind === 'danger-outline'
+          ? 'border border-rose-200 bg-white text-rose-600 shadow-sm hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700'
+          : 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900';
   return (
     <button
       data-testid={props.testId}
@@ -459,36 +461,6 @@ export function ConfirmDialog(props: {
 }
 
 // —— 分页 ——
-
-export function Pagination(props: {
-  page: number;
-  hasMore: boolean;
-  total?: number;
-  totalPages?: number;
-  pageSize: number;
-  onPage: (p: number) => void;
-}) {
-  const start = props.page * props.pageSize;
-  const rangeText =
-    props.total !== undefined && props.total > 0
-      ? props.totalPages !== undefined && props.totalPages > 0
-        ? `共 ${props.total} 个 · 第 ${props.page + 1} / ${props.totalPages} 页`
-        : `第 ${start + 1}-${Math.min(start + props.pageSize, props.total)} 条 · 共 ${props.total} 条`
-      : `第 ${props.page + 1} 页${props.hasMore ? '（已显示部分，可继续翻页）' : ''}`;
-  return (
-    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
-      <span className="text-xs tabular-nums text-slate-400">{rangeText}</span>
-      <div className="flex gap-2">
-        <Btn small disabled={props.page === 0} onClick={() => props.onPage(props.page - 1)}>
-          上一页
-        </Btn>
-        <Btn small disabled={!props.hasMore} onClick={() => props.onPage(props.page + 1)}>
-          下一页
-        </Btn>
-      </div>
-    </div>
-  );
-}
 
 /** 数字分页（带 … 省略号）：固定集合的分页切换，放在卡片头部；仅一页时不渲染 */
 export function Pager(props: {

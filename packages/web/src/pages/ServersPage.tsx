@@ -5,8 +5,8 @@ import type { GatewayInfo, RuntimeTool, ServerDefDTO, ToolInfo } from '../api';
 import { Badge, Btn, Card, ConfirmDialog, CopyBtn, ErrorBanner, Field, Icon, Modal, Pager, Spinner, Toggle, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-/** 每页 server 卡片数：3 列 × 2 行，配卡片头部的数字分页切换 */
-const SERVER_PAGE_SIZE = 6;
+/** 每页 server 卡片数：3 列 × 3 行，配卡片头部的数字分页切换 */
+const SERVER_PAGE_SIZE = 9;
 
 /** 新增弹窗的内置样例：常见 MCP server 的推荐启动配置（选中即填充表单，可再手改） */
 interface ServerTemplate {
@@ -250,22 +250,22 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
                 <div
                   key={s.id}
                   data-testid={`server-row-${s.id}`}
-                  className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
+                  className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
                 >
                   <div className="mb-1 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-semibold text-slate-800" title={s.name}>{s.name}</span>
+                        <span className="truncate text-sm font-semibold text-slate-800" title={s.id}>{s.name}</span>
                         {s.gatewayMode ? <Badge tone="blue">网关</Badge> : <Badge tone="gray">直连</Badge>}
                       </div>
-                      <div className="truncate text-xs text-slate-400" title={s.id}>{s.id}</div>
+                      {s.id !== s.name && <div className="truncate text-xs text-slate-400" title={s.id}>{s.id}</div>}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       {gw !== undefined && <RuntimeBadge status={gw.status} />}
                       {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
                     </div>
                   </div>
-                  <div className="mb-2 flex items-center gap-1.5">
+                  <div className="mb-1.5 flex items-center gap-1.5">
                     <span
                       className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500"
                       title={s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}
@@ -298,7 +298,7 @@ export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
                     >
                       {s.enabled ? '停用' : '启用'}
                     </Btn>
-                    <Btn small kind="danger" onClick={() => setRemoving(s)}>删除</Btn>
+                    <Btn small kind="danger-outline" onClick={() => setRemoving(s)}>删除</Btn>
                   </div>
                 </div>
               );
