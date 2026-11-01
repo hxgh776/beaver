@@ -77,5 +77,5 @@ jobs:
         with:
           name: beaver-${{ matrix.target }}
           path: |
-            beaver-v*/
+            beaver-v*
           if-no-files-found: error
