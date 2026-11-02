@@ -127,20 +127,10 @@ beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 - **Skill 管理**：skills.sh 搜索 + GitHub/本地 ZIP 安装（128MiB/512MiB/30000 条目供应链预算、zip-slip 双防线、symlink 拒收），SSOT + 每-agent 启停矩阵（内容哈希所有权守卫），更新检查与卸载备份（保留 20 份）；
 - **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
 
-## ⬆️ 从 agent-control（npm 版）迁移
-
-项目原名 **Agent Control**（`@hxgh776/agent-control`，命令 `actl`，Node 实现）。现在的 Beaver 是 Go 单文件桌面版，业务逻辑与原实现 1:1 对拍移植、数据格式完全兼容。迁移只需：`actl stop`（或杀掉原 daemon）→ 下载 beaver → `beaver start`。首次启动自动完成：
-
-- 数据目录 `~/.agent-control` → `~/.beaver` 整体迁移（旧目录更名保留）；
-- 各 agent 配置里的网关条目键名 `agent-control-gateway` → `beaver-gateway`，下次同步时旧键自动清理。
-
-原 TypeScript 实现已退役，代码停在 tag [`ts-final`](https://github.com/hxgh776/beaver/tree/ts-final)。
 
 ## 📚 文档
 
-- [需求分析](docs/requirements-analysis.md)
-- [实施方案](docs/implementation-plan.md)
-- [验收报告](docs/acceptance-report.md)（含性能与安全实测数据）
+- [桌面化方案](docs/desktop-plan.md)（托盘 / 窗口 / 设置页决策记录）
 
 ## 🛠 开发
 
@@ -160,7 +150,7 @@ export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无
 
 ## 🗺 Roadmap
 
-- [x] ~~Go 单文件桌面版~~（替代 Node 实现，[v0.1.0](https://github.com/hxgh776/beaver/releases/tag/v0.1.0)）
+- [x] ~~Go 单文件桌面版~~（[v0.1.0](https://github.com/hxgh776/beaver/releases/tag/v0.1.0)）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
 - [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 全规格面板窗口 + 设置页 + 首启向导；二进制经 go-build workflow 手动产出，[方案](docs/desktop-plan.md)）
