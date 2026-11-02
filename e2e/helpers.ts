@@ -2,9 +2,14 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
+/** 仓库根下的 Go 二进制（CI/本地先 `go build -o beaver ./cmd/beaver`） */
+function defaultBeaverBin(): string {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const name = process.platform === 'win32' ? 'beaver.exe' : 'beaver';
+  return path.join(root, name);
+}
 
 export interface TestDaemon {
   base: string;
@@ -19,23 +24,14 @@ export interface TestDaemon {
  */
 export async function startTestDaemon(port = 6290): Promise<TestDaemon> {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'beaver-e2e-'));
-  // BEAVER_E2E_BIN 指向 Go 版 beaver.exe 时对拍 Go daemon（参数协议一致：--home/--agent-home/--port）
-  const goBin = process.env['BEAVER_E2E_BIN'];
-  let child: ChildProcess;
-  if (goBin) {
-    child = spawn(
-      goBin,
-      ['daemon', '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
-      { stdio: 'ignore', windowsHide: true },
-    );
-  } else {
-    const serverDist = path.dirname(require.resolve('@beaver/server'));
-    child = spawn(
-      process.execPath,
-      [serverDist, '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
-      { stdio: 'ignore', windowsHide: true },
-    );
-  }
+  // 被测 daemon = Go 版 beaver 单文件（TS 实现已退役，见 tag ts-final）。
+  // BEAVER_E2E_BIN 指定二进制；缺省取仓库根 ./beaver(.exe)（go build ./cmd/beaver 产出）。
+  const goBin = process.env['BEAVER_E2E_BIN'] ?? defaultBeaverBin();
+  const child: ChildProcess = spawn(
+    goBin,
+    ['daemon', '--home', homeDir, '--agent-home', homeDir, '--port', String(port)],
+    { stdio: 'ignore', windowsHide: true },
+  );
 
   // 读取 token（daemon 启动时会生成默认配置）
   const storePath = path.join(homeDir, 'config.json');

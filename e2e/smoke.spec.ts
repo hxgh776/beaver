@@ -1,5 +1,5 @@
 // E2E 冒烟：token 门 → 概览 → 添加 server → 分发预览 → 网关页。
-// daemon 由 helpers 启动（沙箱 HOME + 沙箱 agent 配置根）。
+// daemon（Go 版 beaver）由 helpers 启动（沙箱 HOME + 沙箱 agent 配置根）。
 import { expect, test } from '@playwright/test';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -123,6 +123,8 @@ test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载'
   await page.getByTestId('btn-skills-zip').click();
   await page.getByTestId('skill-zip-input').setInputFiles(path.join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/skills/demo-skill.zip'));
   await expect(page.getByTestId('skill-card-skill-demo-skill')).toBeVisible({ timeout: 15000 });
+  // 分发区默认收起——先展开，再点 Claude Code 芯片切换
+  await page.getByTestId('skill-targets-toggle-skill-demo-skill').click();
   // 启用投影到 Claude Code
   await page.getByTestId('skill-toggle-skill-demo-skill-claude-code').click();
   await expect(page.getByText('已修改').or(page.getByTestId('skill-card-skill-demo-skill'))).toBeVisible();

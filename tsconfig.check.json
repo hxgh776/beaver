@@ -10,6 +10,6 @@
     "esModuleInterop": true,
     "jsx": "react-jsx"
   },
-  "include": ["packages/*/src/**/*", "packages/*/test/**/*", "e2e/**/*"],
-  "exclude": ["packages/web"] // web 有独立 tsconfig（含 DOM lib），用 pnpm --filter @mcp-manager/web typecheck
+  "include": ["e2e/**/*"],
+  "exclude": ["packages/web"] // web 有独立 tsconfig（含 DOM lib），走 pnpm --filter @beaver/web typecheck
 }

@@ -6,8 +6,8 @@ import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
 import { Badge, Btn, Card, Pager, Segmented, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-/** 每页 agent 卡片数：4 列 × 2 行，配卡片头部的数字分页切换 */
-const AGENT_PAGE_SIZE = 8;
+/** 每页 agent 卡片数：4 列 × 3 行，配卡片头部的数字分页切换 */
+const AGENT_PAGE_SIZE = 12;
 
 /** 探测结果徽章：候选配置文件存在 →「已安装」；否则「未发现」 */
 function DetectBadge({ agent }: { agent: AgentInfo }) {
@@ -85,9 +85,7 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
             </dd>
           </div>
           <Stat label="运行端口">{status.data?.port}</Stat>
-          <Stat label="已运行">
-            {Math.floor((status.data?.uptimeSec ?? 0) / 60)} 分 {((status.data?.uptimeSec ?? 0) % 60)} 秒
-          </Stat>
+          <Stat label="已运行">{formatUptime(status.data?.uptimeSec ?? 0)}</Stat>
           <Stat label="Server / 分组 / 直连绑定">
             {status.data?.serverCount} / {status.data?.groupCount ?? 0} / {status.data?.bindingCount}
           </Stat>
@@ -236,6 +234,15 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
       </Card>
     </div>
   );
+}
+
+/** 运行时长人性化：小时以上不显示秒，避免出现「1323 分 44 秒」这类难读数值 */
+function formatUptime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h} 时 ${m} 分`;
+  if (m > 0) return `${m} 分 ${Math.floor(sec % 60)} 秒`;
+  return `${Math.floor(sec)} 秒`;
 }
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {

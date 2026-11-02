@@ -7,7 +7,6 @@
     "test": "playwright test"
   },
   "devDependencies": {
-    "@beaver/server": "workspace:*",
     "@playwright/test": "^1.49.0"
   }
 }

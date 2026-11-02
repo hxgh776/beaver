@@ -12,3 +12,6 @@ awesome-design-md/
 
 # Go 本地构建产物
 *.exe
+
+# 本地会话文件
+.zcode/

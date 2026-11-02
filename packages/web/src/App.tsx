@@ -166,7 +166,7 @@ function AppShell() {
     <div className="flex h-screen overflow-hidden">
       <aside className="flex w-56 shrink-0 flex-col bg-slate-100">
         <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-500/25">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500">
             <BrandMark className="h-5.5 w-5.5 text-white" />
           </div>
           <div className="leading-tight">
@@ -254,7 +254,7 @@ function TokenGate({ onOk }: { onOk: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-slate-100">
       <div className="w-96 animate-scale-in rounded-2xl bg-white p-8 shadow-pop">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-500/25">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500">
             <BrandMark className="h-6 w-6 text-white" />
           </div>
           <div>

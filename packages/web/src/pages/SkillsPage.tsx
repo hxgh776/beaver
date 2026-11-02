@@ -5,8 +5,8 @@ import type { SkillCollectionReport, SkillSearchResult, SkillUpdateReport, Skill
 import { Badge, Btn, Card, ConfirmDialog, Icon, Pager, Segmented, Spinner } from '../ui';
 import { useToast } from '../ui';
 
-/** 已安装 skill 卡片分页：lg 2 列 × 2 行，配标签行右侧的数字分页 */
-const INSTALLED_PAGE_SIZE = 4;
+/** 已安装 skill 卡片分页：xl 3 列 × 3 行（分发区默认收起，单卡约 150px，768px 高度整屏内） */
+const INSTALLED_PAGE_SIZE = 9;
 
 /** skill 投影支持的 agent 展示名（与 core SKILL_AGENT_DIRS 对应；未知类型回退原值） */
 const SKILL_AGENT_LABEL: Record<string, string> = {
@@ -346,7 +346,7 @@ export function SkillsPage() {
                 <p className="text-sm text-slate-400">还没有安装任何 skill——用上面的搜索或「安装本地 ZIP」开始，SKILL.md 是唯一的准入条件。</p>
               </div>
             ) : (
-              <div className="grid gap-2.5 lg:grid-cols-2">
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                 {pageInstalled.map((s) => (
                   <InstalledSkillCard
                     key={s.id}
@@ -428,92 +428,120 @@ function InstalledSkillCard(props: {
 }) {
   const { s } = props;
   const enabledCount = s.targets.filter((t) => t.enabled).length;
+  // 分发开关区默认收起：常见状态是「全开」，一行摘要即可；点开才展示逐 agent 芯片
+  const [expanded, setExpanded] = useState(false);
   return (
     <div
       data-testid={`skill-card-${s.id}`}
-      className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
+      className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={s.name}>{s.name}</span>
         <Badge tone={s.source === 'local' ? 'gray' : 'blue'}>{sourceLabel(s.source)}</Badge>
         {s.installs !== undefined && <Badge tone="gray">{s.installs} 安装</Badge>}
       </div>
-      {s.description && <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{s.description}</div>}
-      <div className="mt-1 truncate font-mono text-xs text-slate-400" title={s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory}>
-        {s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory} · #{s.contentHash.slice(0, 8)}
+      {s.description && <div className="mt-1 line-clamp-1 text-xs leading-relaxed text-slate-500" title={s.description}>{s.description}</div>}
+      <div className="mt-0.5 truncate font-mono text-xs text-slate-400" title={s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory}>
+        {s.repoOwner ? `${s.repoOwner}/${s.repoName}@${s.branch}` : s.directory}
       </div>
 
-      <div className="mt-3" data-testid={`skill-targets-${s.id}`}>
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-slate-400">分发到 Agent</span>
+      <div className="mt-2 border-t border-slate-100 pt-2" data-testid={`skill-targets-${s.id}`}>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            data-testid={`skill-targets-toggle-${s.id}`}
+            title="展开 / 收起各 agent 的分发开关"
+            onClick={() => setExpanded((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-800"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              aria-hidden
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+            分发到 Agent
+          </button>
           <span className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid={`skill-all-${s.id}`}
-              disabled={props.toggleAllPending || enabledCount === s.targets.length}
-              title="分发到全部支持 agent"
-              onClick={() => props.onToggleAll(true)}
-              className="text-xs text-slate-400 transition-colors hover:text-brand-600 disabled:pointer-events-none disabled:opacity-40"
-            >
-              全选
-            </button>
-            <button
-              type="button"
-              data-testid={`skill-none-${s.id}`}
-              disabled={props.toggleAllPending || enabledCount === 0}
-              title="停用全部分发（我们自己的投影会删除，用户改过的目录保留）"
-              onClick={() => props.onToggleAll(false)}
-              className="text-xs text-slate-400 transition-colors hover:text-slate-600 disabled:pointer-events-none disabled:opacity-40"
-            >
-              清空
-            </button>
+            {expanded && (
+              <>
+                <button
+                  type="button"
+                  data-testid={`skill-all-${s.id}`}
+                  disabled={props.toggleAllPending || enabledCount === s.targets.length}
+                  title="分发到全部支持 agent"
+                  onClick={() => props.onToggleAll(true)}
+                  className="text-xs text-slate-400 transition-colors hover:text-brand-600 disabled:pointer-events-none disabled:opacity-40"
+                >
+                  全选
+                </button>
+                <button
+                  type="button"
+                  data-testid={`skill-none-${s.id}`}
+                  disabled={props.toggleAllPending || enabledCount === 0}
+                  title="停用全部分发（我们自己的投影会删除，用户改过的目录保留）"
+                  onClick={() => props.onToggleAll(false)}
+                  className="text-xs text-slate-400 transition-colors hover:text-slate-600 disabled:pointer-events-none disabled:opacity-40"
+                >
+                  清空
+                </button>
+              </>
+            )}
             <span className="text-xs tabular-nums text-slate-400">{enabledCount}/{s.targets.length}</span>
           </span>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {s.targets.map((t) => {
-            const label = SKILL_AGENT_LABEL[t.agentType] ?? t.agentType;
-            const tip = t.modified
-              ? `${label}：目标目录被修改过（保留中，未受我们管理）`
-              : !t.enabled && t.projected
-                ? `${label}：目录仍在（未启用）`
-                : `${label}：${t.enabled ? '已启用，点击停用' : '未启用，点击启用'}`;
-            return (
-              <button
-                key={t.agentType}
-                data-testid={`skill-toggle-${s.id}-${t.agentType}`}
-                disabled={props.togglePending}
-                title={tip}
-                onClick={() => props.onToggle(t.agentType, !t.enabled)}
-                className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${
-                  t.enabled
-                    ? 'border-brand-200 bg-brand-50 text-brand-700'
-                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                }`}
-              >
-                {t.enabled ? (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                ) : (
-                  <span className="h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden />
-                )}
-                <span className="max-w-28 truncate">{label}</span>
-                {t.modified && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="目标目录被修改过" aria-label="已修改" />}
-                {!t.enabled && t.projected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" title="目录仍在（未启用）" aria-label="目录仍在" />}
-              </button>
-            );
-          })}
-        </div>
+        {expanded && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {s.targets.map((t) => {
+              const label = SKILL_AGENT_LABEL[t.agentType] ?? t.agentType;
+              const tip = t.modified
+                ? `${label}：目标目录被修改过（保留中，未受我们管理）`
+                : !t.enabled && t.projected
+                  ? `${label}：目录仍在（未启用）`
+                  : `${label}：${t.enabled ? '已启用，点击停用' : '未启用，点击启用'}`;
+              return (
+                <button
+                  key={t.agentType}
+                  data-testid={`skill-toggle-${s.id}-${t.agentType}`}
+                  disabled={props.togglePending}
+                  title={tip}
+                  onClick={() => props.onToggle(t.agentType, !t.enabled)}
+                  className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${
+                    t.enabled
+                      ? 'border-brand-200 bg-brand-50 text-brand-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                  }`}
+                >
+                  {t.enabled ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden />
+                  )}
+                  <span className="max-w-28 truncate">{label}</span>
+                  {t.modified && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="目标目录被修改过" aria-label="已修改" />}
+                  {!t.enabled && t.projected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" title="目录仍在（未启用）" aria-label="目录仍在" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+      <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2">
         {s.repoOwner && (
           <Btn small testId={`skill-update-${s.id}`} disabled={props.updatePending} onClick={props.onUpdate}>
             更新
           </Btn>
         )}
-        <Btn small kind="danger" testId={`skill-uninstall-${s.id}`} className="ml-auto" onClick={props.onRemove}>
+        <Btn small kind="danger-outline" testId={`skill-uninstall-${s.id}`} className="ml-auto" onClick={props.onRemove}>
           卸载
         </Btn>
       </div>
@@ -536,7 +564,7 @@ function SearchResultCard(props: {
   return (
     <div
       data-testid={`skill-result-${s.skillId}`}
-      className={`flex flex-col rounded-xl border p-4 transition-all duration-200 ${
+      className={`flex flex-col rounded-xl border p-3 transition-all duration-200 ${
         props.exactInstalled
           ? 'border-emerald-200 bg-emerald-50/40 hover:border-emerald-300'
           : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover'
@@ -563,7 +591,7 @@ function SearchResultCard(props: {
         <span className="tabular-nums">{s.installs.toLocaleString('en-US')}</span>
         <span>次安装</span>
       </div>
-      <div className="mt-auto flex items-center gap-2 border-t border-slate-100 pt-3">
+      <div className="mt-auto flex items-center gap-2 border-t border-slate-100 pt-2.5">
         {props.firstOfRepo && (
           <Btn
             small

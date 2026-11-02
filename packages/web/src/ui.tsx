@@ -37,7 +37,7 @@ export function Card({
 export function Btn(props: {
   children: ReactNode;
   onClick?: () => void;
-  kind?: 'primary' | 'default' | 'danger';
+  kind?: 'primary' | 'default' | 'danger' | 'danger-outline';
   disabled?: boolean;
   testId?: string;
   small?: boolean;
@@ -49,7 +49,9 @@ export function Btn(props: {
       ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/25 hover:bg-brand-600 active:bg-brand-700'
       : props.kind === 'danger'
         ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/20 hover:bg-rose-600 active:bg-rose-700'
-        : 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900';
+        : props.kind === 'danger-outline'
+          ? 'border border-rose-200 bg-white text-rose-600 shadow-sm hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700'
+          : 'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900';
   return (
     <button
       data-testid={props.testId}
@@ -460,36 +462,6 @@ export function ConfirmDialog(props: {
 
 // —— 分页 ——
 
-export function Pagination(props: {
-  page: number;
-  hasMore: boolean;
-  total?: number;
-  totalPages?: number;
-  pageSize: number;
-  onPage: (p: number) => void;
-}) {
-  const start = props.page * props.pageSize;
-  const rangeText =
-    props.total !== undefined && props.total > 0
-      ? props.totalPages !== undefined && props.totalPages > 0
-        ? `共 ${props.total} 个 · 第 ${props.page + 1} / ${props.totalPages} 页`
-        : `第 ${start + 1}-${Math.min(start + props.pageSize, props.total)} 条 · 共 ${props.total} 条`
-      : `第 ${props.page + 1} 页${props.hasMore ? '（已显示部分，可继续翻页）' : ''}`;
-  return (
-    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
-      <span className="text-xs tabular-nums text-slate-400">{rangeText}</span>
-      <div className="flex gap-2">
-        <Btn small disabled={props.page === 0} onClick={() => props.onPage(props.page - 1)}>
-          上一页
-        </Btn>
-        <Btn small disabled={!props.hasMore} onClick={() => props.onPage(props.page + 1)}>
-          下一页
-        </Btn>
-      </div>
-    </div>
-  );
-}
-
 /** 数字分页（带 … 省略号）：固定集合的分页切换，放在卡片头部；仅一页时不渲染 */
 export function Pager(props: {
   page: number;
@@ -667,19 +639,20 @@ export function formatLocalDateTime(iso: string): string {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
-/** 品牌 Logo：河狸剪影（圆耳 + 大脸 + 大板牙），颜色跟随 currentColor */
+/** 品牌 Logo「坝上河狸」：拱头 + 双耳 + 网纹坝带（扁尾即坝体），颜色跟随 currentColor；
+ *  眼睛用 even-odd 打孔透出底色，坝带为实底（小尺寸下网纹会糊掉） */
 export function BrandMark({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
       <g fill="currentColor">
-        <circle cx="15.5" cy="16.5" r="5.6" />
-        <circle cx="48.5" cy="16.5" r="5.6" />
         <path
           fillRule="evenodd"
-          d="M10.5 35 a21.5 18 0 1 0 43 0 a21.5 18 0 1 0 -43 0 Z M21.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z M37.3 31.5 a2.7 2.7 0 1 0 5.4 0 a2.7 2.7 0 1 0 -5.4 0 Z"
+          clipRule="evenodd"
+          d="M17 50 V30.5 a15 15 0 0 1 30 0 V50 a3 3 0 0 1 -3 3 H20 a3 3 0 0 1 -3 -3 Z M24.5 32 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 Z M39.5 32 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 Z"
         />
-        <rect x="27.6" y="43.5" width="4.1" height="11.5" rx="1.7" />
-        <rect x="32.3" y="43.5" width="4.1" height="11.5" rx="1.7" />
+        <circle cx="18.5" cy="14.5" r="4.6" />
+        <circle cx="45.5" cy="14.5" r="4.6" />
+        <rect x="7" y="43" width="50" height="12" rx="6" />
       </g>
     </svg>
   );

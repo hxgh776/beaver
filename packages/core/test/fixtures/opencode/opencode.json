@@ -1,6 +1,0 @@
-{
-  "mcp": {
-    "local-one": { "type": "local", "command": ["npx", "-y", "server-x"], "environment": { "KEY": "v" } },
-    "remote-one": { "type": "remote", "url": "https://example.com/mcp" }
-  }
-}

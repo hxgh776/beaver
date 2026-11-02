@@ -11,7 +11,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-**Beaver**（npm 包 [`@hxgh776/beaver`](https://www.npmjs.com/package/@hxgh776/beaver)，命令 `dam`）——面向开发者个人电脑的 **Agent 装备总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**已内置。
+**Beaver**（单文件桌面程序，命令 `beaver`）——面向开发者个人电脑的 **Agent 装备总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**已内置。
 
 > **Every agent's gear. One dam.** —— 河狸修坝：把所有水流收进同一座坝，每道闸门独立启闭，坝上看得见每一笔流量。配置一次，全局生效，很河狸。
 
@@ -66,51 +66,39 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 
 ## 🚀 快速开始
 
-### 方式 A：桌面版（Go 单文件，免 Node）
-
-到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe` 等），双击或：
+到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe.zip` / `linux-x64.tar.gz` / `macos-arm64.tar.gz`），解压后：
 
 ```bash
-beaver start      # daemon 后台常驻 + Web 面板
-beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 自启开关
+beaver start      # daemon 后台常驻 + Web 面板（http://127.0.0.1:6280）
+beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 自启开关 / 退出
 beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
 ```
 
-> **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。运行后从系统托盘或浏览器进入面板，跟着**首启向导**（探测 → 导入 → 同步）三步完成接入。
+> **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。
 
-### 方式 B：npm 渠道（当前发行态）
+**5 分钟上手路径**（首次进面板会由**首启向导**带着走完）：
 
-```bash
-npm install -g @hxgh776/beaver
-dam start                     # daemon 后台常驻
-#   API/UI: http://127.0.0.1:6280
-#   MCP   : http://127.0.0.1:6280/mcp
-dam autostart on              # 可选：开机自启，登录时静默拉起
-```
+1. **探测**：自动识别本机已安装的 agent；
+2. **导入**：把各 agent 里现有的 MCP 配置收进注册表（跨 agent 自动按指纹去重）；
+3. **同步**：勾选要启用的 agent → 一键分发。此后改配置/换密钥/开关工具都只在这一处。
 
-**5 分钟上手路径**：
-
-1. 打开「概览」页 → 自动探测本机 agent，并把现有 MCP 配置**导入**注册表；
-2. 「MCP 发现」页搜索（如 `context7`）→ 一键以网关模式添加；
-3. 「Agent 分发」页勾选要启用它的 agent → **同步**；
-4. 完成。此后改配置/换密钥/开关工具都只在这一处，同步一下全局生效。
+免 Node、免安装、单文件 ~11 MB；数据目录 `~/.beaver`，监听恒为 127.0.0.1。
 
 ## 🖥 CLI
 
 ```bash
-dam start | stop | status
-dam servers list | servers add --name X --transport stdio --command npx --args ...
-dam agents             # 探测本机 agent
-dam import [--all]     # 从现有 agent 配置导入
-dam sync [--dry-run]   # 分发到各 agent
-dam gateway status | start | stop
-dam bridge <url> --token xxx    # stdio 反向桥（供 stdio agent 连远程端点）
-dam autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗口；macOS: LaunchAgent；Linux: systemd user unit）
-dam tray               # 托盘常驻（Go 版）：面板 / 网关开关 / 立即同步 / 自启开关
-dam open               # 用 Edge/Chrome 独立应用窗口打开面板（Go 版）
+beaver start | stop | status
+beaver servers list | servers add --name X --transport stdio --command npx --args ...
+beaver agents             # 探测本机 agent
+beaver import [--all]     # 从现有 agent 配置导入
+beaver sync [--dry-run]   # 分发到各 agent
+beaver gateway status | start | stop
+beaver bridge <url> --token xxx    # stdio 反向桥（供 stdio agent 连远程端点）
+beaver autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗口；macOS: LaunchAgent；Linux: systemd user unit）
+beaver tray               # 托盘常驻：面板 / 网关开关 / 立即同步 / 自启开关 / 退出
+beaver open               # 先确保 daemon 在跑，再用 Edge/Chrome 独立应用窗口打开面板
+beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 ```
-
-> npm 版命令为 `dam`；Go 桌面版二进制名为 `beaver`，子命令一致（`beaver start` = `dam start`）。
 
 ## 🤖 支持的 Agent
 
@@ -139,12 +127,14 @@ dam open               # 用 Edge/Chrome 独立应用窗口打开面板（Go 版
 - **Skill 管理**：skills.sh 搜索 + GitHub/本地 ZIP 安装（128MiB/512MiB/30000 条目供应链预算、zip-slip 双防线、symlink 拒收），SSOT + 每-agent 启停矩阵（内容哈希所有权守卫），更新检查与卸载备份（保留 20 份）；
 - **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
 
-## ⬆️ 从 agent-control 升级
+## ⬆️ 从 agent-control（npm 版）迁移
 
-项目原名 **Agent Control**（`@hxgh776/agent-control`，命令 `actl`）。更名后首次启动会自动完成两件事，无需手动操作：
+项目原名 **Agent Control**（`@hxgh776/agent-control`，命令 `actl`，Node 实现）。现在的 Beaver 是 Go 单文件桌面版，业务逻辑与原实现 1:1 对拍移植、数据格式完全兼容。迁移只需：`actl stop`（或杀掉原 daemon）→ 下载 beaver → `beaver start`。首次启动自动完成：
 
 - 数据目录 `~/.agent-control` → `~/.beaver` 整体迁移（旧目录更名保留）；
 - 各 agent 配置里的网关条目键名 `agent-control-gateway` → `beaver-gateway`，下次同步时旧键自动清理。
+
+原 TypeScript 实现已退役，代码停在 tag [`ts-final`](https://github.com/hxgh776/beaver/tree/ts-final)。
 
 ## 📚 文档
 
@@ -154,31 +144,23 @@ dam open               # 用 Edge/Chrome 独立应用窗口打开面板（Go 版
 
 ## 🛠 开发
 
+后端 Go，前端 React（`packages/web`，构建产物经 `go:embed` 打进二进制）：
+
 ```bash
-pnpm install
-pnpm build        # 构建 core / server / web / @hxgh776/beaver（cli，含 esbuild 单包）
-pnpm test         # 130 个单元 + 集成测试（含真实子进程网关全链路）
-pnpm lint
-cd e2e && pnpm i && npx playwright install chromium && pnpm test
+go build -o beaver ./cmd/beaver        # 单文件 CLI + daemon + 托盘
+go test ./...                           # 128 个用例（含真实 stdio/HTTP 上游网关全链路）
+pnpm install && pnpm build              # 构建 Web UI 并同步到 internal/webui/dist（改 UI 后必做，再 go build）
+cd e2e && npx playwright install chromium && pnpm test   # Playwright 冒烟 9 条，默认起仓库根的 ./beaver
+export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无需）
 ```
 
 > 所有自动化测试通过沙箱目录重定向，**绝不读写真实 agent 配置**。
-
-**Go 后端**（桌面版所在，业务逻辑与 TS 版 1:1 对拍移植）：
-
-```bash
-go build ./cmd/beaver                                   # 单文件 CLI + daemon + 托盘
-go test ./...                                           # 128 个 Go 用例（含真实 stdio/HTTP 上游网关链路）
-pnpm build:go-web                                       # Web 构建产物同步进 go:embed（internal/webui/dist）
-export GOPROXY=https://goproxy.cn,direct                # 国内代理（CI 无需）
-BEAVER_E2E_BIN=./beaver (cd e2e && npx playwright test) # 同一 Playwright 套件对拍 Go daemon
-```
-
-版本号单点在 `internal/version/version.go`，CI 以 `-ldflags -X ...value=<tag>` 注入。
+> Linux 构建需 `libayatana-appindicator3-dev libgtk-3-dev`（托盘 cgo 后端）；Windows 纯 Go，macOS 需 Xcode 命令行工具。
+> 版本号单点 `internal/version/version.go`，CI 以 `-ldflags -X ...value=<tag>` 注入。
 
 ## 🗺 Roadmap
 
-- [x] ~~发布到 npm~~（`npm i -g @hxgh776/beaver`）
+- [x] ~~Go 单文件桌面版~~（替代 Node 实现，[v0.1.0](https://github.com/hxgh776/beaver/releases/tag/v0.1.0)）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
 - [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 全规格面板窗口 + 设置页 + 首启向导；二进制经 go-build workflow 手动产出，[方案](docs/desktop-plan.md)）

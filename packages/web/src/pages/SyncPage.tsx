@@ -5,8 +5,8 @@ import { api } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
 import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, Pager, inputCls, selectCls, useToast } from '../ui';
 
-/** 明细分页：xl 4 列 × 1 行，配卡片头部的数字分页切换 */
-const DETAIL_PAGE_SIZE = 4;
+/** 明细分页：xl 4 列 × 2 行，配卡片头部的数字分页切换 */
+const DETAIL_PAGE_SIZE = 8;
 /** 分组卡片分页：3 列 × 2 行 */
 const GROUP_PAGE_SIZE = 6;
 
@@ -143,7 +143,7 @@ export function SyncPage() {
         ) : (
           <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
             {pageGroups.map((g) => (
-              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <span className="truncate text-sm font-semibold text-slate-800" title={g.name}>{g.name}</span>
@@ -153,10 +153,10 @@ export function SyncPage() {
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     <Btn small onClick={() => setEditing(g)}>编辑</Btn>
-                    <Btn small kind="danger" onClick={() => setRemoving(g)}>删除</Btn>
+                    <Btn small kind="danger-outline" onClick={() => setRemoving(g)}>删除</Btn>
                   </div>
                 </div>
-                <div className="mb-3 mt-2 space-y-1.5">
+                <div className="mt-2 space-y-1.5">
                   <LabeledChipRow label="包含">
                     {g.serverIds.map((sid) => (
                       <Chip key={sid} onRemove={() => groupServer.mutate({ groupId: g.id, serverId: sid, on: false })}>
@@ -208,7 +208,7 @@ export function SyncPage() {
       >
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
           {pageAgents.map((a) => (
-            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="flex flex-col rounded-xl border border-slate-200 px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate text-sm font-semibold text-slate-800">{a.displayName}</span>
@@ -224,7 +224,7 @@ export function SyncPage() {
                 </div>
                 <span className="shrink-0 text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
               </div>
-              <div className="mb-3 mt-2 space-y-1.5">
+              <div className="mt-2 space-y-1.5">
                 <LabeledChipRow label="分组">
                   {a.groupIds.map((gid) => (
                     <Chip key={gid} tone="blue" onRemove={() => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: false })}>

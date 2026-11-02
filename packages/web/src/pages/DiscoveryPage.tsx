@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RegistrySearchResult, RegistrySuggestion, ServerDefDTO } from '../api';
-import { Badge, Btn, Card, Icon, Pagination, Segmented, Spinner, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, Pager, Segmented, Spinner, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-// 每页 12 张（3 列 × 4 行）：整页配合头部控制在了一屏内，翻页在卡片底部
+// 每页 12 张（3 列 × 4 行）：卡片瘦身（去图标块/常量徽章）后 12 张在 768px 高度内也免滚动
 const PAGE_SIZE = 12;
 
 /** 搜索/浏览的数据源，按国内/国际分组；npm 仅在有关键词时可用（npm 没有可浏览目录） */
@@ -116,10 +116,12 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
   const served = results.data?.source;
   const browsAll = query === '';
   const addedIds = new Set((servers.data?.servers ?? []).map((s) => s.id));
+  // 有总数用总数；上游只给 hasMore 时按「当前页 +1 探底」给出可点的下一页
+  const pagerTotal = results.data?.totalPages ?? (results.data?.hasMore === true ? page + 2 : page + 1);
 
   return (
     <div>
-      <Card title="MCP 发现" subtitle="国内外九源聚合：魔搭 / 百度 / 官方 / GitHub / Smithery / Cline / Docker / mcpm / npm。搜索结果按热度排序（npm=周下载量、魔搭=调用量等）；官方源不可达时自动回退 npm。">
+      <Card title="MCP 发现" subtitle="国内外九源聚合，结果按热度排序；官方源不可达时自动回退 npm。">
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -157,19 +159,20 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
             </div>
           ))}
         </div>
-      </Card>
-
-      <Card
-        title={browsAll ? '浏览全部 MCP' : `搜索“${query}”`}
-        subtitle={served !== undefined ? SOURCE_NOTE[served] : undefined}
-        actions={
-          browsAll ? undefined : (
-            <Btn small onClick={() => { setInput(''); search(''); }}>
-              清空搜索
-            </Btn>
-          )
-        }
-      >
+        <div className="mb-3 mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <div className="min-w-0">
+            <span className="text-sm font-semibold text-slate-800">{browsAll ? '浏览全部 MCP' : `搜索“${query}”`}</span>
+            {served !== undefined && <span className="ml-2 text-xs text-slate-400">{SOURCE_NOTE[served]}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {!browsAll && (
+              <Btn small onClick={() => { setInput(''); search(''); }}>
+                清空搜索
+              </Btn>
+            )}
+            <Pager page={page} totalPages={pagerTotal} onPage={setPage} />
+          </div>
+        </div>
         {results.isPending ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
             <Spinner className="h-4 w-4 text-brand-600" />
@@ -183,82 +186,62 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
           </p>
         ) : (
           <>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
               {list.map((r) => {
                 const isAdded = addedIds.has(r.suggestion?.name ?? r.name);
                 return (
                   <div
                     key={`${r.source ?? served}-${r.name}`}
                     data-testid={`registry-${r.name}`}
-                    className={`flex flex-col rounded-xl border p-4 transition-all duration-200 ${
+                    className={`flex flex-col rounded-xl border p-3 transition-all duration-200 ${
                       isAdded
                         ? 'border-emerald-200 bg-emerald-50/40 hover:border-emerald-300'
                         : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover'
                     }`}
                   >
-                    <div className="flex items-start gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-50 to-brand-100 text-brand-600 ring-1 ring-brand-200/70">
-                        <Icon name="servers" className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={r.name}>{r.name}</span>
-                          {isAdded && (
-                            <Badge tone="green">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
-                                <path d="M20 6L9 17l-5-5" />
-                              </svg>
-                              已添加
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                          {r.suggestion === null ? (
-                            <Badge tone="gray">不支持自动添加</Badge>
-                          ) : (
-                            <>
-                              <Badge tone={r.source === 'smithery' ? 'amber' : r.source === 'npm' ? 'gray' : 'blue'}>
-                                {SOURCE_LABEL[r.source ?? served ?? 'official'] ?? r.source}
-                              </Badge>
-                              <Badge tone="blue">{r.suggestion.transport}</Badge>
-                              {heatLabel(r) !== null && <Badge tone="gray">🔥 {heatLabel(r)}</Badge>}
-                            </>
-                          )}
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={r.name}>{r.name}</span>
+                      {isAdded && (
+                        <Badge tone="green">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                          已添加
+                        </Badge>
+                      )}
                     </div>
-                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500" title={r.description}>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      {r.suggestion === null ? (
+                        <Badge tone="gray">不支持自动添加</Badge>
+                      ) : (
+                        <>
+                          <Badge tone={r.source === 'smithery' ? 'amber' : r.source === 'npm' ? 'gray' : 'blue'}>
+                            {SOURCE_LABEL[r.source ?? served ?? 'official'] ?? r.source}
+                          </Badge>
+                          <Badge tone="blue">{r.suggestion.transport}</Badge>
+                          {heatLabel(r) !== null && <Badge tone="gray">🔥 {heatLabel(r)}</Badge>}
+                        </>
+                      )}
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-500" title={r.description}>
                       {r.description}
                     </p>
-                    <div className="mt-auto flex items-center gap-2 border-t border-slate-100 pt-2.5">
-                      {r.suggestion !== null && (
-                        <Badge tone="green">网关模式</Badge>
-                      )}
-                      <div className="ml-auto">
-                        {r.suggestion !== null &&
-                          (isAdded ? (
-                            <Btn small onClick={() => onNavigate?.('sync')}>
-                              去分发
-                            </Btn>
-                          ) : (
-                            <Btn small kind="primary" disabled={add.isPending} onClick={() => add.mutate(r)}>
-                              添加
-                            </Btn>
-                          ))}
-                      </div>
+                    <div className="mt-auto flex items-center justify-end border-t border-slate-100 pt-2">
+                      {r.suggestion !== null &&
+                        (isAdded ? (
+                          <Btn small onClick={() => onNavigate?.('sync')}>
+                            去分发
+                          </Btn>
+                        ) : (
+                          <Btn small kind="primary" disabled={add.isPending} onClick={() => add.mutate(r)}>
+                            添加
+                          </Btn>
+                        ))}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <Pagination
-              page={page}
-              hasMore={results.data?.hasMore === true}
-              total={results.data?.total}
-              totalPages={results.data?.totalPages}
-              pageSize={PAGE_SIZE}
-              onPage={setPage}
-            />
           </>
         )}
       </Card>
