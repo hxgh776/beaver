@@ -17,6 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hxgh776/beaver/internal/autostart"
 	"github.com/hxgh776/beaver/internal/secretbox"
 	"github.com/hxgh776/beaver/internal/store"
 )
@@ -188,6 +189,7 @@ func (u *Upstream) connect(ctx context.Context) (*mcp.ClientSession, error) {
 			return nil, errors.New("stdio 上游缺少 command")
 		}
 		cmd := exec.Command(*u.Def.Command, derefSlice(u.Def.Args)...)
+		autostart.HideWindow(cmd) // stdio 上游（npx 等）不弹控制台窗
 		cmd.Dir = deref(u.Def.Cwd)
 		cmd.Env = stdioEnv(env)
 		cmd.Stderr = &stderrRingWriter{u: u}

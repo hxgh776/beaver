@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/hxgh776/beaver/internal/autostart"
 )
 
 // RuntimeTool 单个运行时探测结果。
@@ -75,7 +77,9 @@ func detectTool(s spec) RuntimeTool {
 func tryVersion(command string, args []string) *string {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, command, args...).Output()
+	probe := exec.CommandContext(ctx, command, args...)
+	autostart.HideWindow(probe) // daemon 无控制台，探测命令不弹窗
+	out, err := probe.Output()
 	if err != nil {
 		return nil
 	}
