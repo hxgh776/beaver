@@ -282,7 +282,7 @@ function TokenGate({ onOk }: { onOk: () => void }) {
         )}
         <button
           data-testid="token-submit"
-          className="h-10 w-full rounded-lg bg-brand-500 text-sm font-medium text-white shadow-sm shadow-brand-500/25 transition-all duration-150 hover:bg-brand-600 active:bg-brand-700 active:scale-[0.98]"
+          className="h-10 w-full rounded-lg bg-brand-500 text-sm font-medium text-white shadow-sm shadow-brand-500/25 transition-[color,background-color,transform] duration-150 hover:bg-brand-600 active:bg-brand-700 active:scale-[0.98]"
           onClick={() => void tryAuth()}
         >
           进入

@@ -58,7 +58,7 @@ export function Btn(props: {
       onClick={props.onClick}
       disabled={props.disabled}
       title={props.title}
-      className={`${props.className ?? ''} inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+      className={`${props.className ?? ''} inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
         props.small === true ? 'h-7 rounded-md px-2.5 text-xs' : 'h-10 px-4 text-sm'
       } ${kind}`}
     >
@@ -211,7 +211,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className="shrink-0 rounded p-0.5 opacity-40 transition hover:opacity-90"
               aria-label="关闭"
             >
-              ✕
+              <Icon name="x" className="h-4 w-4" />
             </button>
           </div>
         ))}
@@ -248,7 +248,7 @@ export function CopyBtn({ text, label = '复制', className = '' }: { text: stri
       onClick={() => void copy()}
       title="复制到剪贴板"
       aria-label={iconOnly ? '复制' : undefined}
-      className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border transition-all duration-150 active:scale-[0.97] ${
+      className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.97] ${
         iconOnly ? 'w-7' : 'px-2'
       } ${
         done
@@ -256,16 +256,7 @@ export function CopyBtn({ text, label = '复制', className = '' }: { text: stri
           : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800'
       } ${className}`}
     >
-      {done ? (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0" aria-hidden>
-          <path d="M20 6L9 17l-5-5" />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0" aria-hidden>
-          <rect x="9" y="9" width="11" height="11" rx="2" />
-          <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-        </svg>
-      )}
+      <Icon name={done ? 'checkPlain' : 'copy'} className="h-3.5 w-3.5 shrink-0" />
       {!iconOnly && <span className="text-xs font-medium">{done ? '已复制' : label}</span>}
     </button>
   );
@@ -421,7 +412,7 @@ export function Modal(props: {
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
             aria-label="关闭"
           >
-            ✕
+            <Icon name="x" className="h-4 w-4" />
           </button>
         </div>
         <div className="overflow-y-auto px-5 py-5">{props.children}</div>
@@ -485,7 +476,7 @@ export function Pager(props: {
     seq.push(totalPages - 1);
   }
   const cls = (active: boolean): string =>
-    `inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs font-medium tabular-nums transition-all duration-150 active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-brand-500 ${
+    `inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs font-medium tabular-nums transition-[color,background-color,transform] duration-150 active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-brand-500 ${
       active ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/25' : 'text-slate-500 hover:bg-slate-200/70 hover:text-slate-800'
     }`;
   return (
@@ -603,6 +594,15 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M8.5 12.5l2.5 2.5 4.5-5" />
     </>
   ),
+  checkPlain: <path d="M20 6L9 17l-5-5" />,
+  x: <path d="M18 6L6 18M6 6l12 12" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </>
+  ),
+  chevronRight: <path d="M9 6l6 6-6 6" />,
 };
 
 export function Icon({ name, className = 'h-4.5 w-4.5' }: { name: keyof typeof ICON_PATHS | string; className?: string }) {

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
-import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, Pager, inputCls, selectCls, useToast } from '../ui';
+import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Icon, Modal, AddMenu, Pager, inputCls, selectCls, useToast } from '../ui';
 
 /** 明细分页：xl 4 列 × 2 行，配卡片头部的数字分页切换 */
 const DETAIL_PAGE_SIZE = 8;
@@ -143,7 +143,7 @@ export function SyncPage() {
         ) : (
           <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
             {pageGroups.map((g) => (
-              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <span className="truncate text-sm font-semibold text-slate-800" title={g.name}>{g.name}</span>
@@ -208,7 +208,7 @@ export function SyncPage() {
       >
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
           {pageAgents.map((a) => (
-            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="flex flex-col rounded-xl border border-slate-200 px-3 py-2.5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate text-sm font-semibold text-slate-800">{a.displayName}</span>
@@ -303,13 +303,17 @@ export function SyncPage() {
                     </li>
                   ))}
                   {a.unsupported.map((u) => (
-                    <li key={u.serverId} className="text-amber-600">
-                      ⚠ {serverName(u.serverId)}: {u.reason}
-                    </li>
+                  <li key={u.serverId} className="flex items-start gap-1.5 text-amber-600">
+                    <Icon name="alert" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {serverName(u.serverId)}: {u.reason}
+                    </span>
+                  </li>
                   ))}
                   {a.conflicts.map((c) => (
-                    <li key={c.resolutionKey} data-testid={`conflict-${c.key}`} className="flex flex-wrap items-center gap-2 text-red-600">
-                      ⚠ 冲突 {c.key}（检测到手工修改）
+                  <li key={c.resolutionKey} data-testid={`conflict-${c.key}`} className="flex flex-wrap items-center gap-2 text-red-600">
+                    <Icon name="alert" className="h-3.5 w-3.5 shrink-0" />
+                    冲突 {c.key}（检测到手工修改）
                       <select
                         className={selectCls}
                         value={resolutions[c.resolutionKey] ?? 'skip'}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setToken } from '../api';
 import type { AgentInfo, GatewayInfo, StatusInfo } from '../api';
-import { Badge, Btn, Card, CopyBtn, Toggle, codeChipCls, rowCls, theadCls, useToast } from '../ui';
+import { Badge, Btn, Card, CopyBtn, Icon, Toggle, codeChipCls, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
 export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
@@ -75,12 +75,15 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
   return (
     <div>
       {status.data?.resyncPending === true && (
-        <div data-testid="resync-banner" className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-          ⚠ token 已轮换或访问令牌开关已变更，已分发的网关配置需要重新同步——请到
-          <button className="mx-1 underline" onClick={() => onNavigate?.('sync')}>
-            「Agent 分发」页
-          </button>
-          操作，此提醒才会消除。
+        <div data-testid="resync-banner" className="mb-4 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            token 已轮换或访问令牌开关已变更，已分发的网关配置需要重新同步——请到
+            <button className="mx-1 underline" onClick={() => onNavigate?.('sync')}>
+              「Agent 分发」页
+            </button>
+            操作，此提醒才会消除。
+          </span>
         </div>
       )}
 

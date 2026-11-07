@@ -433,7 +433,7 @@ function InstalledSkillCard(props: {
   return (
     <div
       data-testid={`skill-card-${s.id}`}
-      className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
+      className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={s.name}>{s.name}</span>
@@ -454,18 +454,7 @@ function InstalledSkillCard(props: {
             onClick={() => setExpanded((v) => !v)}
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-800"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
-              aria-hidden
-            >
-              <path d="M9 6l6 6-6 6" />
-            </svg>
+            <Icon name="chevronRight" className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             分发到 Agent
           </button>
           <span className="flex items-center gap-2">
@@ -512,16 +501,14 @@ function InstalledSkillCard(props: {
                   disabled={props.togglePending}
                   title={tip}
                   onClick={() => props.onToggle(t.agentType, !t.enabled)}
-                  className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${
+                  className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${
                     t.enabled
                       ? 'border-brand-200 bg-brand-50 text-brand-700'
                       : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
                   }`}
                 >
                   {t.enabled ? (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
+                    <Icon name="checkPlain" className="h-3 w-3" />
                   ) : (
                     <span className="h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden />
                   )}
@@ -564,7 +551,7 @@ function SearchResultCard(props: {
   return (
     <div
       data-testid={`skill-result-${s.skillId}`}
-      className={`flex flex-col rounded-xl border p-3 transition-all duration-200 ${
+      className={`flex flex-col rounded-xl border p-3 transition-[transform,border-color,box-shadow] duration-200 ${
         props.exactInstalled
           ? 'border-emerald-200 bg-emerald-50/40 hover:border-emerald-300'
           : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover'
@@ -574,9 +561,7 @@ function SearchResultCard(props: {
         <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={s.name}>{s.name}</span>
         {props.exactInstalled ? (
           <Badge tone="green">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+            <Icon name="checkPlain" className="h-3 w-3" />
             已安装
           </Badge>
         ) : props.repoInstalledCount > 0 ? (
@@ -587,7 +572,6 @@ function SearchResultCard(props: {
         {s.repo}@{s.branch}
       </div>
       <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-        <span aria-hidden>🔥</span>
         <span className="tabular-nums">{s.installs.toLocaleString('en-US')}</span>
         <span>次安装</span>
       </div>

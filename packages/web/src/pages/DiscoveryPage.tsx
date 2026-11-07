@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RegistrySearchResult, RegistrySuggestion, ServerDefDTO } from '../api';
-import { Badge, Btn, Card, Pager, Segmented, Spinner, inputCls, useToast } from '../ui';
+import { Badge, Btn, Card, Icon, Pager, Segmented, Spinner, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
 // 每页 12 张（3 列 × 4 行）：卡片瘦身（去图标块/常量徽章）后 12 张在 768px 高度内也免滚动
@@ -64,7 +64,7 @@ function heatLabel(r: RegistrySuggestion): string | null {
   if (r.useCount === undefined) return null;
   if (r.source === 'npm') return `周下载 ${formatCount(r.useCount)}`;
   if (r.source === 'modelscope') return `${formatCount(r.useCount)} 次调用`;
-  if (r.source === 'baidu') return `⭐ ${formatCount(r.useCount)}`;
+  if (r.source === 'baidu') return `${formatCount(r.useCount)} Star`;
   return `${formatCount(r.useCount)} 次使用`;
 }
 
@@ -193,7 +193,7 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
                   <div
                     key={`${r.source ?? served}-${r.name}`}
                     data-testid={`registry-${r.name}`}
-                    className={`flex flex-col rounded-xl border p-3 transition-all duration-200 ${
+                    className={`flex flex-col rounded-xl border p-3 transition-[transform,border-color,box-shadow] duration-200 ${
                       isAdded
                         ? 'border-emerald-200 bg-emerald-50/40 hover:border-emerald-300'
                         : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover'
@@ -203,9 +203,7 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
                       <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={r.name}>{r.name}</span>
                       {isAdded && (
                         <Badge tone="green">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
+                          <Icon name="checkPlain" className="h-3 w-3" />
                           已添加
                         </Badge>
                       )}
@@ -219,7 +217,7 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
                             {SOURCE_LABEL[r.source ?? served ?? 'official'] ?? r.source}
                           </Badge>
                           <Badge tone="blue">{r.suggestion.transport}</Badge>
-                          {heatLabel(r) !== null && <Badge tone="gray">🔥 {heatLabel(r)}</Badge>}
+                          {heatLabel(r) !== null && <Badge tone="gray">{heatLabel(r)}</Badge>}
                         </>
                       )}
                     </div>
