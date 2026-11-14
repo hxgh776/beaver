@@ -29,12 +29,18 @@ var homeOverride string
 func main() {
 	args := extractHomeFlag(os.Args[1:])
 	if len(args) == 0 {
-		usage()
-		os.Exit(2)
+		// 无参数 = 直接进入终端面板（VENU-16）：exe 执行就能看到面板，不再依赖浏览器。
+		if err := cmdTui(nil); err != nil {
+			fmt.Fprintln(os.Stderr, "✗", err.Error())
+			os.Exit(1)
+		}
+		return
 	}
 	cmd, rest := args[0], args[1:]
 	var err error
 	switch cmd {
+	case "tui":
+		err = cmdTui(rest)
 	case "start":
 		err = cmdStart()
 	case "stop":
@@ -78,6 +84,8 @@ func usage() {
 
 用法: beaver [--home <dir>] <command>
 
+  （无参数）         进入终端面板 TUI（exe 直接运行查看；daemon 未跑则自动拉起）
+  tui                同上，显式进入终端面板
   start              启动 daemon（分离式后台进程）
   stop               停止 daemon
   status             查看 daemon 状态

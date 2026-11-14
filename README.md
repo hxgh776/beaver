@@ -69,6 +69,7 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe.zip` / `linux-x64.tar.gz` / `macos-arm64.tar.gz`），解压后：
 
 ```bash
+beaver            # 直接运行 = 打开终端面板 TUI（daemon 未跑则自动拉起，无需浏览器）
 beaver start      # daemon 后台常驻 + Web 面板（http://127.0.0.1:6280）
 beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 自启开关 / 退出
 beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
@@ -87,6 +88,9 @@ beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
 ## 🖥 CLI
 
 ```bash
+beaver（无参数）| tui      # 终端面板 TUI：概览 / MCP 管理 / MCP 发现 / Agent 分发 /
+                          # 聚合网关 / 调用日志 / Skill 管理 / 设置，与 Web 面板同源
+                          # daemon 未跑 = 面板进程自持有（退出即停）；已跑 = 挂远端（退出保留）
 beaver start | stop | status
 beaver servers list | servers add --name X --transport stdio --command npx --args ...
 beaver agents             # 探测本机 agent
