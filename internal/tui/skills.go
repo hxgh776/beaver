@@ -19,6 +19,10 @@ type skillsPage struct {
 	ssotDir    string
 	skillTable *tview.Table
 	reportView *tview.TextView
+	// 工具栏安装入口（测试经 pageStruct 驱动：聚焦后真实按键激活）
+	searchBtn *tview.Button
+	collBtn   *tview.Button
+	zipBtn    *tview.Button
 }
 
 func newSkillsPage(a *App) *pageDef {
@@ -28,9 +32,10 @@ func newSkillsPage(a *App) *pageDef {
 	}
 
 	toolbar := tview.NewFlex()
-	searchBtn := toolbarButton("搜索安装（skills.sh）", func() { go p.openSearch(a) })
-	collBtn := toolbarButton("仓库集合安装", func() { go p.openCollectionInstall(a) })
-	zipBtn := toolbarButton("本地 ZIP 安装", func() { go p.openZipInstall(a) })
+	p.searchBtn = toolbarButton("搜索安装（skills.sh）", func() { go p.openSearch(a) })
+	p.collBtn = toolbarButton("仓库集合安装", func() { go p.openCollectionInstall(a) })
+	p.zipBtn = toolbarButton("本地 ZIP 安装", func() { go p.openZipInstall(a) })
+	searchBtn, collBtn, zipBtn := p.searchBtn, p.collBtn, p.zipBtn
 	toggleBtn := toolbarButton("分发开关", func() {
 		sk := p.selectedSkill()
 		go p.openTargets(a, sk)
@@ -66,6 +71,7 @@ func newSkillsPage(a *App) *pageDef {
 		prim: bordered(" Skill 管理（回车配置分发开关） ", content),
 		focus: p.skillTable,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 
@@ -170,17 +176,19 @@ func (p *skillsPage) openSearch(a *App) {
 						resultTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.0f", s.Installs)))
 						resultTable.SetCell(row, 2, tview.NewTableCell("[gray]"+s.Repo+"@"+s.Branch+"[-]").SetMaxWidth(40))
 					}
+					// 结果就绪后焦点交给结果表（方向键选行，回车 = 安装所选）
+					a.tapp.SetFocus(resultTable)
 				})
 			}()
 		})
-		form.AddButton("安装所选", func() {
+		installSelected := func() {
 			row, _ := resultTable.GetSelection() // 循环内读
 			if searchState == nil || row <= 0 || row-1 >= len(searchState.Skills) {
-				go a.info("先搜索并选中技能")
+				a.info("先搜索并选中技能")
 				return
 			}
 			s := searchState.Skills[row-1]
-			a.closeModalSafe()
+			// pickEnableFor 的 showModal 原子替换当前模态，无需先显式关闭（避免异步乱序）
 			p.pickEnableFor(a, func(enableFor []string) {
 				go func() {
 					skill, err := a.b.client.SkillInstall(s.Repo, s.SkillID, s.Branch, enableFor)
@@ -192,8 +200,11 @@ func (p *skillsPage) openSearch(a *App) {
 					p.load(a)
 				}()
 			})
-		})
-		form.AddButton("关闭", func() { a.closeModalSafe() })
+		}
+		form.AddButton("安装所选", installSelected)
+		// 结果表回车 = 安装所选（键盘直达，不必 Tab 摸回按钮）
+		resultTable.SetSelectedFunc(func(row, _ int) { installSelected() })
+		form.AddButton("关闭", func() { a.closeModal() })
 
 		body := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(form, 3, 0, true).
@@ -202,9 +213,10 @@ func (p *skillsPage) openSearch(a *App) {
 	})
 }
 
-// pickEnableFor 选择分发目标（8 个 agent 复选框）后回调；部件操作经 ui 排队。
+// pickEnableFor 选择分发目标（8 个 agent 复选框）后回调。post 异步调度：
+// 调用方可能在事件循环内（搜索/集合安装按钮），也可能在 goroutine 内（ZIP 安装）。
 func (p *skillsPage) pickEnableFor(a *App, onDone func([]string)) {
-	a.ui(func() {
+	a.post(func() {
 		form := tview.NewForm()
 		for _, at := range skills.SkillAgentList {
 			form.AddCheckbox(at, false, nil)
@@ -216,10 +228,11 @@ func (p *skillsPage) pickEnableFor(a *App, onDone func([]string)) {
 					enableFor = append(enableFor, at)
 				}
 			}
-			a.closeModalSafe()
-			onDone(enableFor)
+			a.closeModal()
+			// go 化：onDone 可能做阻塞 client 调用（ZIP 安装路径），不得占住事件循环
+			go onDone(enableFor)
 		})
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		form.AddButton("取消", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" 选择分发目标 ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 60, len(skills.SkillAgentList)+5))
 	})
@@ -235,10 +248,10 @@ func (p *skillsPage) openCollectionInstall(a *App) {
 			repo := form.GetFormItem(0).(*tview.InputField).GetText()  // 循环内读
 			branch := form.GetFormItem(1).(*tview.InputField).GetText() // 循环内读
 			if len(strings.TrimSpace(repo)) < 3 {
-				go a.info("仓库坐标不能为空")
+				a.info("仓库坐标不能为空")
 				return
 			}
-			a.closeModalSafe()
+			// showModal 原子替换当前模态，无需先显式关闭
 			p.pickEnableFor(a, func(enableFor []string) {
 				go func() {
 					report, err := a.b.client.SkillInstallCollection(repo, branch, enableFor)
@@ -256,7 +269,7 @@ func (p *skillsPage) openCollectionInstall(a *App) {
 				}()
 			})
 		})
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		form.AddButton("取消", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" 仓库集合安装 ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 70, 9))
 	})
@@ -275,7 +288,7 @@ func (p *skillsPage) openZipInstall(a *App) {
 			zipPath := form.GetFormItem(0).(*tview.InputField).GetText()
 			go p.installZip(a, zipPath, true)
 		})
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		form.AddButton("取消", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" 本地 ZIP 安装 ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 76, 9))
 	})
@@ -335,8 +348,8 @@ func (p *skillsPage) openTargets(a *App, sk *skills.WithStatus) {
 			})
 		}
 		form.AddButton("完成", func() {
-			a.closeModalSafe()
-			p.load(a)
+			a.closeModal()
+			go p.load(a) // load 含 client 调用，不占事件循环
 		})
 		form.SetBorder(true).SetTitle(" 分发开关 — " + sk.ID + " ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 64, len(sk.Targets)+6))

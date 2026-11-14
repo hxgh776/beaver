@@ -65,6 +65,7 @@ func newDiscoveryPage(a *App) *pageDef {
 		prim: bordered(" MCP 发现（回车收录选中项） ", content),
 		focus: p.searchBox,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 

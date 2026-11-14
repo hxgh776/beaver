@@ -19,7 +19,12 @@ type settingsPage struct {
 	infoView    *tview.TextView
 	backupTable *tview.Table
 	restoreRows []restoreRow
+	portField   *tview.InputField
+	levelDrop   *tview.DropDown
+	form        *tview.Form
 }
+
+var logLevels = []string{"debug", "info", "warn", "error"}
 
 func newSettingsPage(a *App) *pageDef {
 	p := &settingsPage{
@@ -28,9 +33,13 @@ func newSettingsPage(a *App) *pageDef {
 	}
 
 	form := tview.NewForm()
-	form.AddInputField("API 端口（保存后需重启 daemon）", "", 10, nil, nil) // item 0
-	form.AddDropDown("日志级别", []string{"debug", "info", "warn", "error"}, 1, nil) // item 1
+	// 标签保持短（左列宽度有限，长标签会把输入框挤出屏幕）；重启提示放信息区
+	p.portField = tview.NewInputField().SetLabel("API 端口").SetFieldWidth(10)
+	form.AddFormItem(p.portField) // item 0
+	p.levelDrop = tview.NewDropDown().SetLabel("日志级别").SetOptions(logLevels, nil).SetCurrentOption(1)
+	form.AddFormItem(p.levelDrop) // item 1
 	form.AddButton("保存运行参数", func() { p.saveSettings(a, form) })
+	p.form = form // 测试经 pageStruct 取用（GetButton 驱动保存）
 	form.AddButton("开机自启：开", func() { go p.setAutostart(a, true) })
 	form.AddButton("开机自启：关", func() { go p.setAutostart(a, false) })
 	form.AddButton("打开数据目录", func() { go p.openDir(a) })
@@ -46,7 +55,7 @@ func newSettingsPage(a *App) *pageDef {
 	})
 
 	left := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(form, 5, 0, true).
+		AddItem(form, 10, 0, true). // 2 个表单项（各占 2 行含间距）+ 按钮行 + 边框
 		AddItem(sectionTitle("关于"), 1, 0, false).
 		AddItem(p.infoView, 0, 1, false)
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -61,6 +70,7 @@ func newSettingsPage(a *App) *pageDef {
 		prim: bordered(" 设置 ", content),
 		focus: p.backupTable,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 
@@ -83,6 +93,15 @@ func (p *settingsPage) load(a *App) {
 		p.status = status
 		p.settings = settings
 		p.autostart = autostart
+		// 表单回填当前值（否则下拉停在默认 info：当前为 debug/warn/error 时
+		// 只改端口保存就会把日志级别误写成 info）
+		p.portField.SetText(fmt.Sprint(settings.Port))
+		for idx, lv := range logLevels {
+			if lv == settings.LogLevel {
+				p.levelDrop.SetCurrentOption(idx)
+				break
+			}
+		}
 		p.applyInfo(auErr, autostart)
 		if baErr != nil {
 			p.backupTable.Clear()
@@ -99,6 +118,7 @@ func (p *settingsPage) applyInfo(auErr error, autostart *AutostartInfo) {
 		fmt.Sprintf("版本 [white]beaver %s（daemon %s）[-]", version.String(), orDash(p.status.Version)),
 		fmt.Sprintf("数据目录 [white]%s[-]", p.status.HomeDir),
 		fmt.Sprintf("端口 [white]%d[-]   日志级别 [white]%s[-]   令牌鉴权 [white]%v[-]", p.settings.Port, p.settings.LogLevel, p.settings.AuthRequired),
+		"[gray]（端口保存后需重启 daemon：beaver stop && beaver start）[-]",
 	}
 	if auErr != nil {
 		lines = append(lines, "[red]自启状态读取失败: "+auErr.Error()+"[-]")

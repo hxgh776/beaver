@@ -37,6 +37,8 @@ type ServiceOptions struct {
 	AgentRoot string
 	// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
 	FetchZip func(ctx context.Context, url string) ([]byte, error)
+	// SkillsShBase 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）
+	SkillsShBase string
 }
 
 // CollectionInstallReport 集合安装结果：installed 与 failed 互斥；单个技能失败不中断整批。
@@ -136,7 +138,7 @@ func (s *Service) skillRow(id string) (store.InstalledSkill, error) {
 
 // Search skills.sh 搜索。
 func (s *Service) Search(ctx context.Context, q string, limit, offset int) (SearchResult, error) {
-	return SearchSkillsSh(ctx, q, limit, offset, 10*time.Second)
+	return SearchSkillsSh(ctx, s.opts.SkillsShBase, q, limit, offset, 10*time.Second)
 }
 
 // List 已安装技能与投影状态。

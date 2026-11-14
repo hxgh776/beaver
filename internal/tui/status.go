@@ -50,7 +50,7 @@ func newStatusPage(a *App) *pageDef {
 
 	buttons := tview.NewFlex()
 	btnProbe := tview.NewButton("重新探测")
-	btnProbe.SetSelectedFunc(func() { go a.refreshPage(0) })
+	btnProbe.SetSelectedFunc(func() { go p.load(a, true) }) // refresh=1 强制重探（对齐 Web）
 	btnProbe.SetBorder(true)
 	btnImportAll := tview.NewButton("全部导入")
 	btnImportAll.SetSelectedFunc(func() {
@@ -83,7 +83,8 @@ func newStatusPage(a *App) *pageDef {
 	return &pageDef{
 		prim: prim,
 		focus: p.agentTable,
-		load: func(a *App) { p.load(a) },
+		load: func(a *App) { p.load(a, false) },
+		inst:  p,
 	}
 }
 
@@ -99,10 +100,11 @@ func bordered(title string, inner tview.Primitive) tview.Primitive {
 	return f
 }
 
-// load 同步拉取概览数据（status + agents + environment + import 预览）并套用。
-func (p *statusPage) load(a *App) {
+// load 拉取概览数据（status + agents + environment + import 预览）并套用。
+// refresh=true 时 agent 探测走 refresh=1 强制重探（「重新探测」按钮）；goroutine 内调用。
+func (p *statusPage) load(a *App, refresh bool) {
 	status, stErr := a.b.client.Status()
-	agents, agErr := a.b.client.Agents(false)
+	agents, agErr := a.b.client.Agents(refresh)
 	tools, envErr := a.b.client.Environment()
 	groups, imErr := a.b.client.ImportPreview()
 	settings, setErr := a.b.client.Settings()
@@ -239,9 +241,13 @@ func (p *statusPage) doImport(a *App, fps []string) {
 		a.errd(err)
 		return
 	}
-	a.info(fmt.Sprintf("已导入 %d 个 server", n))
-	// 与 Web 向导"完成"等价：完成首次导入后不再显示首启横幅
-	_ = a.b.client.PatchSettings(map[string]any{"hasOnboarded": true})
+	// 与 Web 向导"完成"等价：完成首次导入后不再显示首启横幅。
+	// 标记写失败必须提示——静默吞掉会导致首启横幅每次启动反复出现。
+	if err := a.b.client.PatchSettings(map[string]any{"hasOnboarded": true}); err != nil {
+		a.errd(fmt.Errorf("已导入 %d 个 server，但首启标记写入失败（横幅可能重复出现）: %w", n, err))
+	} else {
+		a.info(fmt.Sprintf("已导入 %d 个 server", n))
+	}
 	a.refreshCurrent()
 }
 

@@ -64,6 +64,7 @@ func newLogsPage(a *App) *pageDef {
 		prim: bordered(" 调用日志（自动刷新 · 与 Web 同为轮询） ", content),
 		focus: p.callTable,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 

@@ -93,6 +93,7 @@ func newSyncPage(a *App) *pageDef {
 		prim: bordered(" Agent 分发 ", content),
 		focus: p.groupTable,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 
@@ -190,7 +191,8 @@ func (p *syncPage) openGroupForm(a *App, g *store.ServerGroup) {
 			}
 			go p.saveGroup(a, g, name, wantServers, wantAgents)
 		})
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		// 事件循环内直接关模态
+		form.AddButton("取消", func() { a.closeModal() })
 		title := "新建分组"
 		if g != nil {
 			title = "编辑分组 — " + g.ID
@@ -284,7 +286,7 @@ func (p *syncPage) openBindingForm(a *App, bind bool) {
 				p.load(a)
 			}()
 		})
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		form.AddButton("取消", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" " + action + "直连绑定 ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 70, 9))
 	})

@@ -105,20 +105,6 @@ func TestHeadlessAllPagesRender(t *testing.T) {
 	}
 }
 
-// TestHeadlessServerCRUDInUI 核心增删改查在 TUI 内可完成：
-// 经 TUI 的表单提交路径新增 server，再经页面渲染断言出现在表格中，最后经 TUI 删除。
-func TestHeadlessServerCRUDInUI(t *testing.T) {
-	home, agentHome := sandbox(t)
-	var captures [][]string
-	err := Run(Options{
-		HomeDir:   home,
-		AgentHome: agentHome,
-		SyncUI:    true,
-		Snapshot:  "all",
-		Capture:   &captures,
-	})
-	if err != nil {
-		t.Fatalf("headless 渲染失败: %v", err)
-	}
-	_ = captures
-}
+// TestHeadlessServerCRUDInUI 已删除（原实现只有 Run 快照 + 空断言，是空壳）。
+// 真实的按键驱动 CRUD 全链路见 tui_e2e_test.go 的 TestTUIServerCRUDByKey；
+// 按键级交互（侧栏切页/Ctrl+Q/模态取消/技能安装）同样在该文件。

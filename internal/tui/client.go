@@ -351,6 +351,14 @@ func (c *Client) Groups() ([]store.ServerGroup, error) {
 }
 
 func (c *Client) SaveGroup(id, name string, serverIds, agentTypes []string) error {
+	// nil 切片会序列化为 JSON null，daemon parseGroupInput 只认数组——
+	// 显式空数组语义 = 清空成员；null 语义 = PATCH 保留原成员。与 Web 行为对齐。
+	if serverIds == nil {
+		serverIds = []string{}
+	}
+	if agentTypes == nil {
+		agentTypes = []string{}
+	}
 	body := map[string]any{"name": name, "serverIds": serverIds, "agentTypes": agentTypes}
 	if id != "" {
 		return c.do("PATCH", "/api/groups/"+id, body, nil)

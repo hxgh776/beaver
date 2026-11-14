@@ -24,11 +24,15 @@ type serversPage struct {
 	table    *tview.Table
 	envWarn  *tview.TextView
 	servers  []*store.ServerDef
+	visible  []*store.ServerDef // 过滤后的展示行（selected/回车按此映射）
+	filter   string
+	loadErr  string // 网关/环境读取失败提示（空 = 无）
 	envTools []RuntimeTool
 	upstream map[string]string // serverID → 上游状态
+	editForm *tview.Form       // 当前编辑表单（测试经 pageStruct 驱动「取消」按钮）
 }
 
-// serverTemplates 与 Web 内置模板对应的常用收录模板（新增时一键填充表单）。
+// serverTemplates 与 Web 内置模板 1:1（9 个，含空白手填）；context7 与 Web 同为 stdio。
 var serverTemplates = []struct {
 	name      string
 	transport string
@@ -38,11 +42,14 @@ var serverTemplates = []struct {
 	gateway   bool
 }{
 	{"空白（手填）", "", "", nil, "", true},
-	{"context7（HTTP）", "http", "", nil, "https://mcp.context7.com/mcp", true},
+	{"context7（stdio·npx）", "stdio", "npx", []string{"-y", "@upstash/context7-mcp"}, "", true},
 	{"filesystem（stdio·npx）", "stdio", "npx", []string{"-y", "@modelcontextprotocol/server-filesystem", "."}, "", true},
 	{"fetch（stdio·uvx）", "stdio", "uvx", []string{"mcp-server-fetch"}, "", true},
 	{"memory（stdio·npx）", "stdio", "npx", []string{"-y", "@modelcontextprotocol/server-memory"}, "", true},
 	{"sequential-thinking（stdio·npx）", "stdio", "npx", []string{"-y", "@modelcontextprotocol/server-sequential-thinking"}, "", true},
+	{"git（stdio·uvx）", "stdio", "uvx", []string{"mcp-server-git"}, "", true},
+	{"everything（stdio·npx）", "stdio", "npx", []string{"-y", "@modelcontextprotocol/server-everything"}, "", true},
+	{"deepwiki（http·远程）", "http", "", nil, "https://mcp.deepwiki.com/mcp", true},
 }
 
 func newServersPage(a *App) *pageDef {
@@ -71,23 +78,37 @@ func newServersPage(a *App) *pageDef {
 			go p.openTools(a, s)
 		}
 	})
+	// 过滤框（对齐 Web 的 server 列表筛选）：按名称/ID/传输/目标即时过滤
+	filterBox := tview.NewInputField().SetLabel(" 过滤 ").SetFieldWidth(18)
+	filterBox.SetChangedFunc(func(text string) {
+		p.filter = strings.ToLower(strings.TrimSpace(text))
+		p.apply()
+	})
+	filterBox.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		if ev.Key() == tcell.KeyEnter { // 回车回到表格继续操作
+			a.tapp.SetFocus(p.table)
+			return nil
+		}
+		return ev
+	})
 	toolbar.AddItem(addBtn, 12, 0, true).AddItem(editBtn, 12, 0, false).
 		AddItem(delBtn, 12, 0, false).AddItem(toggleBtn, 16, 0, false).
-		AddItem(toolsBtn, 16, 0, false).AddItem(nil, 0, 1, false)
+		AddItem(toolsBtn, 16, 0, false).AddItem(nil, 0, 1, false).
+		AddItem(filterBox, 24, 0, true)
 
 	p.table.SetSelectedFunc(func(row, _ int) {
-		if row >= 1 && row-1 < len(p.servers) { // 回车 = 编辑（指针在循环内取，安全）
-			s := p.servers[row-1]
+		if row >= 1 && row-1 < len(p.visible) { // 回车 = 编辑（指针在循环内取，安全）
+			s := p.visible[row-1]
 			go p.openEdit(a, s)
 		}
 	})
 	// 空表回车 = 新增；Delete 键 = 删除选中行
 	p.table.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyEnter && len(p.servers) == 0 {
+		if ev.Key() == tcell.KeyEnter && len(p.visible) == 0 {
 			go p.openTemplates(a)
 			return nil
 		}
-		if ev.Key() == tcell.KeyDelete && len(p.servers) > 0 {
+		if ev.Key() == tcell.KeyDelete && len(p.visible) > 0 {
 			s := p.selected()
 			go p.remove(a, s)
 			return nil
@@ -104,6 +125,7 @@ func newServersPage(a *App) *pageDef {
 		prim:  bordered(" MCP 管理（回车编辑/新增 · Delete 删除 · 工具调试） ", content),
 		focus: p.table,
 		load:  func(a *App) { p.load(a) },
+		inst:  p,
 	}
 }
 
@@ -117,16 +139,16 @@ func toolbarButton(label string, fn func()) *tview.Button {
 
 func (p *serversPage) selected() *store.ServerDef {
 	row, _ := p.table.GetSelection()
-	if row <= 0 || row-1 >= len(p.servers) {
+	if row <= 0 || row-1 >= len(p.visible) {
 		return nil
 	}
-	return p.servers[row-1]
+	return p.visible[row-1]
 }
 
 func (p *serversPage) load(a *App) {
 	servers, err := a.b.client.Servers()
-	gw, _ := a.b.client.Gateway()
-	tools, _ := a.b.client.Environment()
+	gw, gwErr := a.b.client.Gateway()
+	tools, envErr := a.b.client.Environment()
 	upstream := map[string]string{}
 	if gw != nil {
 		for _, u := range gw.Upstreams {
@@ -143,8 +165,21 @@ func (p *serversPage) load(a *App) {
 		p.servers = servers
 		p.upstream = upstream
 		p.envTools = envTools
+		p.loadErr = loadWarns(gwErr, envErr)
 		p.apply()
 	})
+}
+
+// loadWarns 读取失败提示（上游状态列与运行时缺失告警会因此失真，必须显式提示而非静默）。
+func loadWarns(gwErr, envErr error) string {
+	var parts []string
+	if gwErr != nil {
+		parts = append(parts, "[red]⚠ 网关上游状态读取失败（上游列显示为—）: "+gwErr.Error()+"[-]")
+	}
+	if envErr != nil {
+		parts = append(parts, "[red]⚠ 运行时环境读取失败（依赖缺失告警不可用）: "+envErr.Error()+"[-]")
+	}
+	return strings.Join(parts, "  ")
 }
 
 func (p *serversPage) apply() {
@@ -156,9 +191,24 @@ func (p *serversPage) apply() {
 	p.table.SetCell(0, 4, headerCell("模式"))
 	p.table.SetCell(0, 5, headerCell("上游"))
 	p.table.SetCell(0, 6, headerCell("目标"))
-	p.envWarn.SetText(p.envWarning())
+	warn := p.loadErr
+	if env := p.envWarning(); env != "" {
+		if warn != "" {
+			warn += "  "
+		}
+		warn += env
+	}
+	p.envWarn.SetText(warn)
 
-	for i, s := range p.servers {
+	// 过滤（对齐 Web 列表筛选）：名称/ID/传输/目标不区分大小写包含
+	p.visible = p.visible[:0]
+	for _, s := range p.servers {
+		if p.filterMatches(s) {
+			p.visible = append(p.visible, s)
+		}
+	}
+
+	for i, s := range p.visible {
 		row := i + 1
 		state, color := "○", "gray"
 		if s.Enabled {
@@ -197,6 +247,29 @@ func (p *serversPage) apply() {
 		}
 		p.table.SetCell(row, 6, tview.NewTableCell("[gray]"+target+"[-]").SetMaxWidth(46))
 	}
+	if len(p.visible) == 0 {
+		hint := "（没有 server——回车或「新增」收录）"
+		if p.filter != "" && len(p.servers) > 0 {
+			hint = "（无匹配「" + p.filter + "」的 server，清空过滤框显示全部）"
+		}
+		p.table.SetCell(1, 0, tview.NewTableCell("[gray]"+hint+"[-]").SetSelectable(false))
+	}
+}
+
+// filterMatches 过滤条件匹配（空过滤 = 全部）。
+func (p *serversPage) filterMatches(s *store.ServerDef) bool {
+	if p.filter == "" {
+		return true
+	}
+	target := ""
+	if s.Command != nil {
+		target = *s.Command + " " + strings.Join(derefArgs(s.Args), " ")
+	}
+	if s.URL != nil {
+		target = *s.URL
+	}
+	hay := strings.ToLower(s.Name + " " + s.ID + " " + string(s.Transport) + " " + target)
+	return strings.Contains(hay, p.filter)
 }
 
 func derefArgs(args *[]string) []string {
@@ -242,16 +315,15 @@ func (p *serversPage) envWarning() string {
 func (p *serversPage) openTemplates(a *App) {
 	list := tview.NewList()
 	a.ui(func() {
-		for i := range serverTemplates {
-			tpl := &serverTemplates[i]
-			list.AddItem(tpl.name, "", 0, func() {
-				go func() {
-					a.closeModalSafe()
-					p.openEditWithTemplate(a, nil, tpl)
-				}()
-			})
-		}
-		a.showModal(centered(bordered(" 选择模板 ", list), 72, 16))
+			for i := range serverTemplates {
+				tpl := &serverTemplates[i]
+				list.AddItem(tpl.name, "", 0, func() {
+					// 无需先关模板弹窗——showModal 对 __modal 页做原子替换，先 post 关闭再
+					// 打开反而可能乱序把新模态关掉
+					go p.openEditWithTemplate(a, nil, tpl)
+				})
+			}
+		a.showModal(centered(bordered(" 选择模板 ", list), 72, 21))
 	})
 }
 
@@ -328,7 +400,8 @@ func (p *serversPage) openEditWithTemplate(a *App, s *store.ServerDef, tpl *stru
 		}
 
 		form.AddButton("保存", func() { p.saveForm(a, s, form) })
-		form.AddButton("取消", func() { a.closeModalSafe() })
+		// 事件循环内直接关模态（closeModalSafe 经 post 异步，这里无需异步）
+		form.AddButton("取消", func() { a.closeModal() })
 		// TextArea 自己吃掉 Tab；在表单层拦截：多行框内按 Tab 直接跳到「保存」按钮
 		form.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
 			if ev.Key() != tcell.KeyTab {
@@ -343,6 +416,7 @@ func (p *serversPage) openEditWithTemplate(a *App, s *store.ServerDef, tpl *stru
 			return ev
 		})
 		form.SetBorder(true).SetTitle(" " + formTitle(s) + " ").SetTitleAlign(tview.AlignLeft)
+		p.editForm = form
 		a.showModal(centered(form, 86, 38))
 	})
 }
@@ -680,7 +754,7 @@ func (v *toolsView) invokeDialog(a *App, t ToolInfo) {
 				})
 			}()
 		})
-		form.AddButton("关闭", func() { a.closeModalSafe() })
+		form.AddButton("关闭", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" 调用 — " + v.server.ID + " · " + t.Name + " ").SetTitleAlign(tview.AlignLeft)
 		a.showModal(centered(form, 92, 22))
 	})

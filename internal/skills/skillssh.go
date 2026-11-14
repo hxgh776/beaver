@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// skillsShBaseURL 测试可覆盖（真实地址 skills.sh 搜索 API）。
+// skillsShBaseURL 生产搜索 API 地址（base 参数为空时的缺省值；测试经 ServiceOptions.SkillsShBase 注入桩）。
 var skillsShBaseURL = "https://skills.sh/api/search"
 
 // GitHub 坐标白名单：owner 不含点（拒绝 skills.volces.com 这类伪 owner），全段拒绝路径穿越
@@ -88,12 +88,15 @@ type SearchResult struct {
 }
 
 // SearchSkillsSh skills.sh 搜索；source 必须能拆成合法 GitHub 坐标，否则丢弃该行
-// （cc-switch skill.rs:4425-4486 的同名过滤）。
-func SearchSkillsSh(ctx context.Context, q string, limit, offset int, timeout time.Duration) (SearchResult, error) {
+// （cc-switch skill.rs:4425-4486 的同名过滤）。base 为空时用生产地址（测试可注入桩 URL）。
+func SearchSkillsSh(ctx context.Context, base, q string, limit, offset int, timeout time.Duration) (SearchResult, error) {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	target := fmt.Sprintf("%s?q=%s&limit=%d&offset=%d", skillsShBaseURL, url.QueryEscape(q), limit, offset)
+	if base == "" {
+		base = skillsShBaseURL
+	}
+	target := fmt.Sprintf("%s?q=%s&limit=%d&offset=%d", base, url.QueryEscape(q), limit, offset)
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, target, nil)

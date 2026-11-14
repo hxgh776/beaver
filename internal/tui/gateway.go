@@ -5,6 +5,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/rivo/tview"
 )
@@ -18,6 +19,9 @@ type gatewayPage struct {
 	upTable   *tview.Table
 	epsView   *tview.TextView
 	tokenShown bool
+	// revealGen 令牌明文展示代次：轮换后的临时明文经 AfterFunc 定时回隐；
+	// 手动切换或再次轮换代次递增，取消尚未触发的旧回隐。
+	revealGen int
 }
 
 func newGatewayPage(a *App) *pageDef {
@@ -37,11 +41,11 @@ func newGatewayPage(a *App) *pageDef {
 	})
 	rotateBtn := toolbarButton("轮换令牌", func() { go p.rotateToken(a) })
 	revealBtn := toolbarButton("显示/隐藏令牌", func() {
-		shown := !p.tokenShown // 循环内翻转状态
-		go func() {
-			p.tokenShown = shown
-			a.ui(func() { p.applyToken(a) })
-		}()
+		// 循环内直接翻转并重渲染（字段只在事件循环内读写，消除竞态）；
+		// 代次递增同时取消轮换令牌遗留的自动回隐定时器
+		p.revealGen++
+		p.tokenShown = !p.tokenShown
+		p.applyToken(a, nil)
 	})
 	toolbar.AddItem(startBtn, 14, 0, true).AddItem(stopBtn, 14, 0, false).
 		AddItem(toggleAuth, 18, 0, false).AddItem(rotateBtn, 14, 0, false).
@@ -77,20 +81,23 @@ func newGatewayPage(a *App) *pageDef {
 		prim: bordered(" 聚合网关 ", content),
 		focus: p.upTable,
 		load: func(a *App) { p.load(a) },
+		inst: p,
 	}
 }
 
 func (p *gatewayPage) load(a *App) {
 	status, stErr := a.b.client.Status()
 	gw, gwErr := a.b.client.Gateway()
-	agents, _ := a.b.client.Agents(false)
+	agents, agErr := a.b.client.Agents(false)
 	var token string
+	var tokenErr error
 	if stErr == nil && status.AuthRequired {
-		token, _ = a.b.client.Token()
+		token, tokenErr = a.b.client.Token()
 	}
 	a.ui(func() {
 		if stErr != nil || gwErr != nil {
-			p.gwView.SetText("[red]网关状态获取失败[-]")
+			detail := orDash(firstErrText(stErr, gwErr))
+			p.gwView.SetText("[red]网关状态获取失败: " + detail + "[-]")
 			return
 		}
 		p.status = status
@@ -98,11 +105,21 @@ func (p *gatewayPage) load(a *App) {
 		if token != "" {
 			p.token = token
 		}
-		p.apply(a, agents)
+		p.apply(a, agents, agErr, tokenErr)
 	})
 }
 
-func (p *gatewayPage) apply(a *App, agents []AgentInfo) {
+// firstErrText 两个错误里取非空者（都为空返回空串）。
+func firstErrText(errs ...error) string {
+	for _, e := range errs {
+		if e != nil {
+			return e.Error()
+		}
+	}
+	return ""
+}
+
+func (p *gatewayPage) apply(a *App, agents []AgentInfo, agErr error, tokenErr error) {
 	s := p.status
 	gw := p.gw
 	var lines []string
@@ -153,6 +170,9 @@ func (p *gatewayPage) apply(a *App, agents []AgentInfo) {
 
 	// 各 agent 端点（鉴权开启时附带 token 的 URL 由 sync 分发，这里展示端点形态）
 	var eps []string
+	if agErr != nil {
+		eps = append(eps, "[red]agent 列表获取失败（端点列表不完整）: "+agErr.Error()+"[-]")
+	}
 	for _, ag := range agents {
 		if !ag.Detected {
 			continue
@@ -167,16 +187,21 @@ func (p *gatewayPage) apply(a *App, agents []AgentInfo) {
 		eps = append(eps, "[gray]（未检测到已安装 agent）[-]")
 	}
 	p.epsView.SetText(strings.Join(eps, "\n"))
-	p.applyToken(a)
+	p.applyToken(a, tokenErr)
 }
 
+
 // applyToken 令牌区渲染（在 ui 闭包/事件循环内调用）。
-func (p *gatewayPage) applyToken(a *App) {
+func (p *gatewayPage) applyToken(a *App, tokenErr error) {
 	if p.status == nil {
 		return
 	}
 	if !p.status.AuthRequired {
 		p.tokenView.SetText("[gray]令牌鉴权：关闭（环回监听，D7 默认）[-]")
+		return
+	}
+	if tokenErr != nil {
+		p.tokenView.SetText("[red]访问令牌读取失败（鉴权已开启）: " + tokenErr.Error() + "[-]")
 		return
 	}
 	token := p.token
@@ -254,7 +279,19 @@ func (p *gatewayPage) rotateToken(a *App) {
 		a.ui(func() {
 			p.token = token
 			p.tokenShown = true
-			p.applyToken(a)
+			p.revealGen++
+			p.applyToken(a, nil)
+			// 新令牌临时明文展示 10s 后自动回隐（对齐 Web"查看后回隐"语义）；
+			// 期间手动切换/再次轮换会递增代次，本定时器作废
+			gen := p.revealGen
+			time.AfterFunc(10*time.Second, func() {
+				a.post(func() {
+					if p.revealGen == gen && p.tokenShown {
+						p.tokenShown = false
+						p.applyToken(a, nil)
+					}
+				})
+			})
 		})
 		if resync {
 			a.info("令牌已轮换（需要重新分发）")

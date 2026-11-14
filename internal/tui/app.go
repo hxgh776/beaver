@@ -4,6 +4,7 @@ package tui
 // 页面切换 F1-F8 / Alt+1..8 / 侧栏回车；Ctrl+P 聚焦侧栏；Ctrl+Q 退出（自持有 daemon 时确认）。
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -37,6 +38,10 @@ type Options struct {
 	Width, Height int
 	// Capture 非 nil 时，每页渲染结果（屏幕文本行）追加到该切片（屏幕 Fini 前捕获）。
 	Capture *[][]string
+	// SkillsShBase 非空 = 覆盖 skills.sh 搜索 API 基地址（e2e 测试桩注入；生产为空）。
+	SkillsShBase string
+	// SkillsFetchZip 非空 = 覆盖技能仓库 ZIP 下载实现（e2e 测试注入内存 ZIP；生产为 nil）。
+	SkillsFetchZip func(ctx context.Context, url string) ([]byte, error)
 }
 
 // booted daemon 启动结果（自持有 or 远端挂载）。
@@ -67,6 +72,8 @@ func boot(opts Options) (*booted, error) {
 			HomeDir:         opts.HomeDir,
 			AgentConfigRoot: opts.AgentHome,
 			Port:            opts.Port,
+			SkillsShBase:    opts.SkillsShBase,
+			SkillsFetchZip:  opts.SkillsFetchZip,
 		})
 		gw = gateway.New(d)
 		gw.Attach()
@@ -114,9 +121,26 @@ type pageDef struct {
 	// tview 的 Flex 不做 Tab 轮转，焦点必须显式落在可交互原语上。
 	focus tview.Primitive
 	load  func(a *App)
+	// inst 页面结构体实例（测试经 pageStruct 取用，驱动页面级部件）。
+	inst any
 }
 
-// App TUI 应用状态。所有 UI 变更经 a.ui()（交互模式转主循环，同步模式直接执行）。
+// pageStruct 按页 key 返回页面结构体实例（类型断言由调用方完成；仅测试用）。
+func (a *App) pageStruct(key string) any {
+	for _, def := range a.pageDefs {
+		if def.key == key {
+			return def.inst
+		}
+	}
+	return nil
+}
+
+// App TUI 应用状态。
+// 线程约定：
+//   - 事件回调（按钮/按键/回车/表格选中）运行在事件循环 goroutine：只做部件直接操作，
+//     或经 a.post() 异步调度——严禁调用 a.ui()（QueueUpdate 同步等待自身 → 死锁）；
+//   - 后台 goroutine 内的部件操作经 a.ui() 排队（同步等待完成）；
+//   - a.post() 两种上下文都安全（推荐默认），a.ui() 只允许非事件循环 goroutine 调用。
 type App struct {
 	b      *booted
 	tapp   *tview.Application
@@ -227,7 +251,12 @@ func (a *App) runHeadless(opts Options) error {
 		fmt.Fprintf(os.Stderr, "[tui-debug] 首屏（sync 后）非空行=%d/%d 首行=%q\n", nonBlank, h, first[0])
 	}
 
-	switchPage := func(i int) { a.selectPage(i) }
+	// selectPage 经 post 异步调度切页；快照需要确定性渲染——ui 空操作作栅栏，
+	// 等切页（及 syncUI 模式下随后的同步数据加载）全部应用完成后再 dump 屏幕
+	switchPage := func(i int) {
+		a.selectPage(i)
+		a.ui(func() {})
+	}
 	target := opts.Snapshot
 	if target == "" || target == "all" {
 		for i := range a.pageDefs {
@@ -361,7 +390,7 @@ func (a *App) buildLayout() {
 }
 
 // globalKeys 全局按键：F1-F8 / Alt+1..8 切页，Ctrl+P 侧栏，Ctrl+Q 退出，Esc 关模态。
-// 事件循环 goroutine 内不做阻塞调用：切页走 goroutine（内部经 ui 序列化）。
+// 事件循环 goroutine 内不做阻塞调用：切页/确认框经 post 异步调度（selectPage 自身非阻塞）。
 func (a *App) globalKeys(ev *tcell.EventKey) *tcell.EventKey {
 	switch ev.Key() {
 	case tcell.KeyF1, tcell.KeyF2, tcell.KeyF3, tcell.KeyF4, tcell.KeyF5, tcell.KeyF6, tcell.KeyF7, tcell.KeyF8:
@@ -390,13 +419,14 @@ func (a *App) globalKeys(ev *tcell.EventKey) *tcell.EventKey {
 	return ev
 }
 
-// selectPage 切页：部件操作经 ui 序列化到事件循环，随后按模式加载页面数据。
+// selectPage 切页。任意上下文可调用（侧栏回车/F 键/首屏加载/测试 goroutine）：
+// 部件操作经 post 异步调度（事件循环内调用不阻塞），随后按模式加载页面数据。
 func (a *App) selectPage(i int) {
 	if i < 0 || i >= len(a.pageDefs) {
 		return
 	}
 	def := a.pageDefs[i]
-	a.ui(func() {
+	a.post(func() {
 		if a.hasModal() {
 			a.closeModal()
 		}
@@ -415,6 +445,7 @@ func (a *App) selectPage(i int) {
 // refreshCurrent 拉取当前页数据并刷新。
 // 同步模式（快照/测试）在调用方 goroutine 直接拉取（内部 ui 调用仍排队到循环，
 // 返回即已渲染）——测试因此可确定性断言；交互模式后台拉取。
+// 注意：syncUI 模式的调用方必须是非事件循环 goroutine（快照/测试约定）。
 func (a *App) refreshCurrent() {
 	a.refreshPage(a.current)
 }
@@ -448,11 +479,18 @@ func (a *App) refreshPage(i int) {
 }
 
 // ui 把 UI 变更排队到事件循环并等待其完成（含重绘）。
-// 事件循环内严禁直接调用本方法（QueueUpdate 等待自身 → 死锁）——
-// 事件循环里的代码只能直接改部件或开 goroutine。
+// tview 的 QueueUpdate 是同步等待（updates 通道投递后 <-ch），事件循环内调用即等待
+// 自身 → 死锁。因此本方法只允许非事件循环 goroutine 调用（页面数据加载、后台任务）；
+// 事件回调内一律直接操作部件或走 post。
 func (a *App) ui(fn func()) {
 	_ = a.tapp.QueueUpdateDraw(fn)
 }
+
+// post 把 UI 变更异步调度到事件循环：任意 goroutine 可调用，事件循环内调用也安全——
+// QueueUpdateDraw 的阻塞等待由独立 goroutine 承接，调用方立即返回，
+// 循环回到 select 后即处理（tview 在每次事件处理后重绘，post 的变更必然被渲染）。
+// 事件回调（侧栏回车/Ctrl+Q/模态按钮等）内统一走本方法或部件直接操作。
+func (a *App) post(fn func()) { go a.ui(fn) }
 
 // —— 模态 —— //
 
@@ -511,13 +549,13 @@ func (a *App) closeModal() {
 
 func (a *App) hasModal() bool { return a.pages != nil && a.pages.HasPage("__modal") }
 
-// closeModalSafe 任意 goroutine 可用的关模态（经 ui 排队；事件循环内请直接 closeModal）。
-func (a *App) closeModalSafe() { a.ui(a.closeModal) }
+// closeModalSafe 任意上下文可用的关模态（post 异步调度；事件循环内也可直接 closeModal）。
+func (a *App) closeModalSafe() { a.post(a.closeModal) }
 
-// confirm 通用确认框。部件操作经 ui 排队（可在任意 goroutine 调用）；
+// confirm 通用确认框。post 异步调度（任意上下文可调用，事件循环内不阻塞）；
 // onYes 在独立 goroutine 执行（可做阻塞 client 调用）。
 func (a *App) confirm(title, body string, onYes func()) {
-	a.ui(func() {
+	a.post(func() {
 		modal := tview.NewModal().
 			SetText(title + "\n\n" + body).
 			AddButtons([]string{"确认", "取消"}).
@@ -572,7 +610,9 @@ func (a *App) flash(msg, color string) {
 	a.flashMsg = "[" + color + "]" + msg + "[-]"
 	a.flashUntil = time.Now().Add(8 * time.Second)
 	a.flashMu.Unlock()
-	a.ui(func() { a.refreshStatusbar() })
+	// post 而非 ui：info/errd 会在事件回调内被直接调用，也可能嵌套在 ui 闭包里——
+	// 两条路径都不允许同步等待事件循环
+	a.post(func() { a.refreshStatusbar() })
 }
 
 // info 操作成功提示。
