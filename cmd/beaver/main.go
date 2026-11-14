@@ -24,23 +24,32 @@ import (
 	"github.com/hxgh776/beaver/internal/version"
 )
 
-var homeOverride string
+// 全局 flag：入口层统一摘除（extractGlobalFlags），daemon / TUI 等入口共用。
+var (
+	homeOverride      string
+	agentHomeOverride string
+	portOverride      *int
+)
 
 func main() {
-	args := extractHomeFlag(os.Args[1:])
+	os.Exit(run(os.Args[1:]))
+}
+
+// run 入口分派；返回进程退出码（os.Exit 收敛在 main，便于参数层回归测试）。
+func run(argv []string) int {
+	args := extractGlobalFlags(argv)
 	if len(args) == 0 {
-		// 无参数 = 直接进入终端面板（VENU-16）：exe 执行就能看到面板，不再依赖浏览器。
-		if err := cmdTui(nil); err != nil {
+		// 无参数（或仅全局 flag）= 直接进入终端面板（VENU-16）：exe 执行就能看到面板，不再依赖浏览器。
+		if err := cmdTui(); err != nil {
 			fmt.Fprintln(os.Stderr, "✗", err.Error())
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
-	cmd, rest := args[0], args[1:]
 	var err error
-	switch cmd {
+	switch args[0] {
 	case "tui":
-		err = cmdTui(rest)
+		err = cmdTui()
 	case "start":
 		err = cmdStart()
 	case "stop":
@@ -50,19 +59,19 @@ func main() {
 	case "daemon":
 		err = runDaemon() // 内部子命令：分离式后台进程入口
 	case "servers":
-		err = cmdServers(rest)
+		err = cmdServers(args[1:])
 	case "agents":
 		err = cmdAgents()
 	case "import":
-		err = cmdImport(rest)
+		err = cmdImport(args[1:])
 	case "sync":
-		err = cmdSync(rest)
+		err = cmdSync(args[1:])
 	case "bridge":
-		err = cmdBridge(rest)
+		err = cmdBridge(args[1:])
 	case "gateway":
-		err = cmdGateway(rest)
+		err = cmdGateway(args[1:])
 	case "autostart":
-		err = cmdAutostart(rest)
+		err = cmdAutostart(args[1:])
 	case "tray":
 		err = cmdTray()
 	case "open":
@@ -71,18 +80,19 @@ func main() {
 		fmt.Println("beaver", version.String())
 	default:
 		usage()
-		os.Exit(2)
+		return 2
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗", err.Error())
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func usage() {
 	fmt.Fprint(os.Stderr, `beaver（dam）——本地 Agent 能力总控台
 
-用法: beaver [--home <dir>] <command>
+用法: beaver [--home <dir>] [--agent-home <dir>] [--port <n>] <command>
 
   （无参数）         进入终端面板 TUI（exe 直接运行查看；daemon 未跑则自动拉起）
   tui                同上，显式进入终端面板
@@ -102,18 +112,41 @@ func usage() {
 `)
 }
 
-// extractHomeFlag 摘除全局 --home <dir>（位置不限，commander 全局选项等价）。
-func extractHomeFlag(args []string) []string {
+// extractGlobalFlags 摘除全局 flag --home / --agent-home / --port
+// （位置不限、= 形式等价，commander 全局选项语义；VENU-16 复审修复：
+// 之前只摘 --home，`beaver --home X --agent-home Y` 会把 --agent-home 当未知子命令）。
+// --port 值非法时不摘除，留给 usage 报错路径（exit 2）。
+func extractGlobalFlags(args []string) []string {
 	out := []string{}
 	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		switch {
-		case args[i] == "--home" && i+1 < len(args):
+		case arg == "--home" && i+1 < len(args):
 			homeOverride = args[i+1]
 			i++
-		case strings.HasPrefix(args[i], "--home="):
-			homeOverride = strings.TrimPrefix(args[i], "--home=")
+		case strings.HasPrefix(arg, "--home="):
+			homeOverride = strings.TrimPrefix(arg, "--home=")
+		case arg == "--agent-home" && i+1 < len(args):
+			agentHomeOverride = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--agent-home="):
+			agentHomeOverride = strings.TrimPrefix(arg, "--agent-home=")
+		case arg == "--port" && i+1 < len(args):
+			if p, err := strconv.Atoi(args[i+1]); err == nil {
+				portOverride = &p
+				i++
+			} else {
+				out = append(out, arg, args[i+1])
+				i++
+			}
+		case strings.HasPrefix(arg, "--port="):
+			if p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port=")); err == nil {
+				portOverride = &p
+			} else {
+				out = append(out, arg)
+			}
 		default:
-			out = append(out, args[i])
+			out = append(out, arg)
 		}
 	}
 	return out
@@ -220,26 +253,10 @@ func cmdStatus() error {
 }
 
 // runDaemon daemon 子命令：常驻进程主体（由 start 分离式拉起）。
-// 支持 --home / --agent-home / --port 参数（对齐 TS daemon 入口）。
+// 支持 --home / --agent-home / --port 参数（对齐 TS daemon 入口），
+// 全部经入口层 extractGlobalFlags 摘入全局变量，此处不再二次解析。
 func runDaemon() error {
-	rest := extractHomeFlag(os.Args[2:])
-	opts := daemon.Options{HomeDir: homeOverride}
-	for i := 0; i < len(rest); i++ {
-		switch rest[i] {
-		case "--agent-home":
-			if i+1 < len(rest) {
-				opts.AgentConfigRoot = rest[i+1]
-				i++
-			}
-		case "--port":
-			if i+1 < len(rest) {
-				if p, err := strconv.Atoi(rest[i+1]); err == nil {
-					opts.Port = &p
-				}
-				i++
-			}
-		}
-	}
+	opts := daemon.Options{HomeDir: homeOverride, AgentConfigRoot: agentHomeOverride, Port: portOverride}
 	d := daemon.New(opts)
 	gw := gateway.New(d)
 	gw.Attach()

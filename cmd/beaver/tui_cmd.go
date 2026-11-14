@@ -7,29 +7,14 @@ package main
 
 import (
 	"os"
-	"strconv"
 
 	"github.com/hxgh776/beaver/internal/tui"
 )
 
-func cmdTui(rest []string) error {
-	opts := tui.Options{HomeDir: homeOverride}
-	for i := 0; i < len(rest); i++ {
-		switch rest[i] {
-		case "--agent-home":
-			if i+1 < len(rest) {
-				opts.AgentHome = rest[i+1]
-				i++
-			}
-		case "--port":
-			if i+1 < len(rest) {
-				if p, err := strconv.Atoi(rest[i+1]); err == nil {
-					opts.Port = &p
-				}
-				i++
-			}
-		}
-	}
+func cmdTui() error {
+	// --home/--agent-home/--port 由入口层 extractGlobalFlags 统一摘入全局变量
+	// （无参数、`beaver tui`、flag 打头三条入口路径行为一致）。
+	opts := tui.Options{HomeDir: homeOverride, AgentHome: agentHomeOverride, Port: portOverride}
 	if snap := os.Getenv("BEAVER_TUI_SNAPSHOT"); snap != "" {
 		opts.Snapshot = snap
 		opts.SyncUI = true

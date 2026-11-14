@@ -75,6 +75,8 @@ beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 
 beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
 ```
 
+> **老用户注意**：TUI 是现在的默认入口——`beaver` 直接运行就是终端面板，不再需要"先起服务再开浏览器"；想用浏览器看的老入口还在，`beaver open` 即可（`beaver start` + Web 面板同样保留）。
+
 > **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。
 
 **5 分钟上手路径**（首次进面板会由**首启向导**带着走完）：
