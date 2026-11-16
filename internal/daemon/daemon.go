@@ -80,6 +80,10 @@ type Options struct {
 	Port *int
 	// WebDistDir nil = 内嵌资源；非 nil = 从该目录读（开发调试用）。
 	WebDistDir *string
+	// SkillsShBase 非空 = 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）。
+	SkillsShBase string
+	// SkillsFetchZip 非空 = 覆盖技能仓库 ZIP 下载实现（测试注入内存 ZIP；nil = 真实网络下载）。
+	SkillsFetchZip func(ctx context.Context, url string) ([]byte, error)
 }
 
 // Daemon 单进程承载 HTTP 服务与配置内存态。
@@ -150,10 +154,12 @@ func New(opts Options) *Daemon {
 		logger.Warn("数据目录已重定向但 agent 配置仍指向真实用户主目录——测试场景请传 agentConfigRoot")
 	}
 	d.Skills = skills.NewService(skills.ServiceOptions{
-		HomeDir:    st.HomeDir,
-		GetConfig:  func() *store.Config { return d.Config },
-		SaveConfig: func() error { return d.SaveConfig() },
-		AgentRoot:  agentRoot,
+		HomeDir:      st.HomeDir,
+		GetConfig:    func() *store.Config { return d.Config },
+		SaveConfig:   func() error { return d.SaveConfig() },
+		AgentRoot:    agentRoot,
+		SkillsShBase: opts.SkillsShBase,
+		FetchZip:     opts.SkillsFetchZip,
 	})
 	return d
 }
