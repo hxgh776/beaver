@@ -1,5 +1,5 @@
 // Package tui 终端面板（VENU-16）：exe 直接运行查看管理面板，替代"本地 HTTP + 浏览器"。
-// 数据通道与 Web UI 完全同源——daemon REST API（环回 + Bearer），避免第二套业务逻辑；
+// 数据通道 = daemon REST API（环回 + Bearer），避免第二套业务逻辑；
 // daemon 双模式与 tray 一致：未运行 = 本进程自持有（退出即停），已运行 = 挂远端。
 package tui
 

@@ -182,7 +182,7 @@ func Run(opts Options) error {
 		return a.runHeadless(opts)
 	}
 
-	// 交互模式：周期刷新当前页（网关/日志类页面依赖轮询，与 Web UI 一致）
+	// 交互模式：周期刷新当前页（网关/日志类页面依赖轮询）
 	done := make(chan struct{})
 	defer close(done)
 	go func() {

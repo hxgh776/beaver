@@ -1,9 +1,9 @@
 package main
 
-// beaver tray：托盘常驻壳（docs/desktop-plan.md §4 M2 的 Go 原生落地）。
-// 菜单五项：打开面板 / 网关启停 / 立即同步 / 开机自启开关 / 退出。
+// beaver tray：托盘常驻壳（docs 已随 Web 面板下线，托盘菜单只保留 daemon 相关动作）。
+// 菜单四项：网关启停 / 立即同步 / 开机自启开关 / 退出。
 // 双模式：daemon 未跑 = 自持有（in-process 起 daemon，退出全停）；已跑 = 远端（动作走 HTTP API）。
-// 退出语义 = 停 daemon + 撤托盘；托盘退出 ≠ 关窗口（浏览器/面板窗口独立存活）。
+// 退出语义 = 停 daemon + 撤托盘；交互面板走 `beaver`（终端面板 TUI），托盘不再打开浏览器窗口。
 
 import (
 	"bytes"
@@ -82,7 +82,6 @@ func (t *trayApp) onReady() {
 	systray.SetIcon(desktop.TrayIconICO())
 	systray.SetTooltip("Beaver（河狸）——本地 Agent 能力总控台\n" + t.base)
 
-	mOpen := systray.AddMenuItem("打开面板", "在独立应用窗口打开 Web UI")
 	t.mGateway = systray.AddMenuItemCheckbox("网关", "MCP 网关启停", t.gatewayRunning())
 	mSync := systray.AddMenuItem("立即同步", "把注册表分发到各 agent")
 	t.mAuto = systray.AddMenuItemCheckbox("开机自启", "登录时静默拉起 daemon", autostart.IsInstalled())
@@ -93,8 +92,6 @@ func (t *trayApp) onReady() {
 
 	for {
 		select {
-		case <-mOpen.ClickedCh:
-			_ = desktop.OpenAppWindow(t.base)
 		case <-t.mGateway.ClickedCh:
 			t.toggleGateway()
 		case <-mSync.ClickedCh:

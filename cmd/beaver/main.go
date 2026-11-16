@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/hxgh776/beaver/internal/daemon"
-	"github.com/hxgh776/beaver/internal/desktop"
 	"github.com/hxgh776/beaver/internal/gateway"
 	"github.com/hxgh776/beaver/internal/store"
 	"github.com/hxgh776/beaver/internal/version"
@@ -107,7 +106,7 @@ func usage() {
   bridge <url>       stdio 反向桥（把 HTTP 上游暴露为本地 stdio server）
   autostart on|off|status    开机自启 daemon
   tray               托盘常驻（自持有 daemon；已跑则挂远端）
-  open               打开面板窗口（Edge/Chrome --app → 默认浏览器兜底）
+  open               兼容占位（Web 面板已下线，提示改用终端面板 TUI）
   version            版本信息
 `)
 }
@@ -476,7 +475,7 @@ func cmdSync(args []string) error {
 		}
 		for _, c := range conflicts {
 			cm, _ := c.(map[string]any)
-			fmt.Printf("  ⚠ 冲突 %v（用 Web UI 处置或覆盖）\n", cm["key"])
+			fmt.Printf("  ⚠ 冲突 %v（在 TUI 同步页处置或覆盖）\n", cm["key"])
 		}
 		for _, u := range unsupported {
 			um, _ := u.(map[string]any)
@@ -536,15 +535,9 @@ func cmdGateway(args []string) error {
 	}
 }
 
-// cmdOpen 打开面板窗口（open 语义 = 确保 daemon 在跑再开窗，docs/desktop-plan.md §4）。
+// cmdOpen 兼容占位：Web 面板已下线（VENU-24），交互入口统一为终端面板。
+// 保留命令名与退出码 0，避免既有脚本调用直接失败；不再拉起浏览器。
 func cmdOpen() error {
-	base, err := desktop.EnsureRunning(homeOverride)
-	if err != nil {
-		return err
-	}
-	if err := desktop.OpenAppWindow(base); err != nil {
-		return err
-	}
-	fmt.Printf("已打开面板 %s\n", base)
+	fmt.Println("Web 面板已下线，请直接运行 beaver 进入终端面板 TUI")
 	return nil
 }

@@ -27,21 +27,11 @@
 
 ## ✨ 界面一览
 
-| 概览（Agent 探测 / 运行环境 / 导入） | MCP 管理（卡片 + 弹窗编辑） |
-|---|---|
-| ![概览](docs/screenshots/overview.png) | ![MCP 管理](docs/screenshots/servers.png) |
+单文件 exe 直接运行就是**终端面板（TUI）**，八个页签：概览 / MCP 管理 / MCP 发现 / Agent 分发 / 聚合网关 / 调用日志 / Skill 管理 / 设置。全键盘操作：`F1–F8` 切页、`Ctrl+P` 聚焦侧栏、`Ctrl+Q` 退出。
 
-| Agent 分发（分组批量管理 + 直连） | 聚合网关（聚合端点 / 上游进程） |
-|---|---|
-| ![Agent 分发](docs/screenshots/sync.png) | ![聚合网关](docs/screenshots/gateway.png) |
+daemon 未跑时面板进程自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。
 
-| MCP 发现（国内外九源，热度排序） | 调用日志（本机时区） |
-|---|---|
-| ![MCP 发现](docs/screenshots/discovery.png) | ![调用日志](docs/screenshots/logs.png) |
-
-| Skill 管理（skills.sh 搜索 / 启停矩阵 / 更新检查） |
-|---|
-| ![Skill 管理](docs/screenshots/skills.png) |
+> 浏览器 Web 面板已下线（VENU-24）：交互入口只有 TUI，仓库不再包含 `packages/web` 与 `go:embed` 静态资源。
 
 ## 🤔 为什么需要它
 
@@ -69,21 +59,20 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe.zip` / `linux-x64.tar.gz` / `macos-arm64.tar.gz`），解压后：
 
 ```bash
-beaver            # 直接运行 = 打开终端面板 TUI（daemon 未跑则自动拉起，无需浏览器）
-beaver start      # daemon 后台常驻 + Web 面板（http://127.0.0.1:6280）
-beaver tray       # 托盘常驻：打开面板 / 网关开关 / 立即同步 / 自启开关 / 退出
-beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
+beaver            # 直接运行 = 进入终端面板 TUI（daemon 未跑则自动拉起，无需浏览器）
+beaver start      # daemon 后台常驻（REST API + MCP 网关；TUI 可挂远端）
+beaver tray       # 托盘常驻：网关开关 / 立即同步 / 自启开关 / 退出
 ```
 
-> **老用户注意**：TUI 是现在的默认入口——`beaver` 直接运行就是终端面板，不再需要"先起服务再开浏览器"；想用浏览器看的老入口还在，`beaver open` 即可（`beaver start` + Web 面板同样保留）。
+> **老用户注意**：TUI 是现在的唯一默认入口——`beaver` 直接运行就是终端面板，不再需要"先起服务再开浏览器"。浏览器 Web 面板已随 VENU-24 下线；`beaver open` 仅保留为兼容占位（提示改用 TUI，不再打开浏览器）。
 
 > **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。
 
-**5 分钟上手路径**（首次进面板会由**首启向导**带着走完）：
+**5 分钟上手路径**（全程在终端面板内完成）：
 
-1. **探测**：自动识别本机已安装的 agent；
-2. **导入**：把各 agent 里现有的 MCP 配置收进注册表（跨 agent 自动按指纹去重）；
-3. **同步**：勾选要启用的 agent → 一键分发。此后改配置/换密钥/开关工具都只在这一处。
+1. **探测**：概览页自动识别本机已安装的 agent；
+2. **导入**：MCP 管理页把各 agent 里现有的 MCP 配置收进注册表（跨 agent 自动按指纹去重）；
+3. **同步**：Agent 分发页勾选要启用的 agent → 一键分发。此后改配置/换密钥/开关工具都只在这一处。
 
 免 Node、免安装、单文件 ~11 MB；数据目录 `~/.beaver`，监听恒为 127.0.0.1。
 
@@ -91,7 +80,7 @@ beaver open       # 用 Edge/Chrome 独立应用窗口打开面板
 
 ```bash
 beaver（无参数）| tui      # 终端面板 TUI：概览 / MCP 管理 / MCP 发现 / Agent 分发 /
-                          # 聚合网关 / 调用日志 / Skill 管理 / 设置，与 Web 面板同源
+                          # 聚合网关 / 调用日志 / Skill 管理 / 设置，数据走 daemon REST API
                           # daemon 未跑 = 面板进程自持有（退出即停）；已跑 = 挂远端（退出保留）
 beaver start | stop | status
 beaver servers list | servers add --name X --transport stdio --command npx --args ...
@@ -101,8 +90,8 @@ beaver sync [--dry-run]   # 分发到各 agent
 beaver gateway status | start | stop
 beaver bridge <url> --token xxx    # stdio 反向桥（供 stdio agent 连远程端点）
 beaver autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗口；macOS: LaunchAgent；Linux: systemd user unit）
-beaver tray               # 托盘常驻：面板 / 网关开关 / 立即同步 / 自启开关 / 退出
-beaver open               # 先确保 daemon 在跑，再用 Edge/Chrome 独立应用窗口打开面板
+beaver tray               # 托盘常驻：网关开关 / 立即同步 / 自启开关 / 退出
+beaver open               # 兼容占位：Web 面板已下线，提示改用 TUI（命令仍在，退出码 0）
 beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 ```
 
@@ -136,17 +125,16 @@ beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 
 ## 📚 文档
 
-- [桌面化方案](docs/desktop-plan.md)（托盘 / 窗口 / 设置页决策记录）
+- 多任务协作与运行期隔离规则见 [`AGENTS.md`](AGENTS.md)。
+- 品牌资产见 `docs/brand/`。
 
 ## 🛠 开发
 
-后端 Go，前端 React（`packages/web`，构建产物经 `go:embed` 打进二进制）：
+单文件 Go 实现（CLI + daemon + TUI + 托盘），无 Node 构建步骤：
 
 ```bash
-go build -o beaver ./cmd/beaver        # 单文件 CLI + daemon + 托盘
-go test ./...                           # 128 个用例（含真实 stdio/HTTP 上游网关全链路）
-pnpm install && pnpm build              # 构建 Web UI 并同步到 internal/webui/dist（改 UI 后必做，再 go build）
-cd e2e && npx playwright install chromium && pnpm test   # Playwright 冒烟 9 条，默认起仓库根的 ./beaver
+go build -o beaver ./cmd/beaver        # 单文件 CLI + daemon + 终端面板 + 托盘
+go test ./...                           # 全量用例（含 TUI 无头渲染与真实 stdio/HTTP 上游网关全链路）
 export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无需）
 ```
 
@@ -159,7 +147,8 @@ export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无
 - [x] ~~Go 单文件桌面版~~（[v0.1.0](https://github.com/hxgh776/beaver/releases/tag/v0.1.0)）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
-- [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 全规格面板窗口 + 设置页 + 首启向导；二进制经 go-build workflow 手动产出，[方案](docs/desktop-plan.md)）
+- [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 终端面板 TUI；二进制经 go-build workflow 手动产出）
+- [x] ~~TUI 终端面板~~（exe 直接运行进面板；浏览器 Web 面板已下线）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密
