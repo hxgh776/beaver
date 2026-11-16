@@ -1,4 +1,7 @@
 .worktrees/
+# Web 面板已下线（VENU-24）：node_modules/dist 仅用于隐藏旧工作区残留目录，不再参与构建
+node_modules/
+dist/
 coverage/
 *.log
 .DS_Store
