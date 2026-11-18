@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Beaver mark v3「坝上河狸」: 拱头 + 双耳 + 负空间眼点 + 网纹坝带（扁尾即坝体）。 -->
+  <rect width="64" height="64" rx="14.5" fill="#CC785C"/>
+  <path d="M17 50 V30.5 a15 15 0 0 1 30 0 V50 a3 3 0 0 1 -3 3 H20 a3 3 0 0 1 -3 -3 Z" fill="#FAF9F5"/>
+  <circle cx="18.5" cy="14.5" r="4.6" fill="#FAF9F5"/>
+  <circle cx="45.5" cy="14.5" r="4.6" fill="#FAF9F5"/>
+  <circle cx="24.5" cy="32" r="2.5" fill="#CC785C"/>
+  <circle cx="39.5" cy="32" r="2.5" fill="#CC785C"/>
+  <rect x="7" y="43" width="50" height="12" rx="6" fill="#FAF9F5" stroke="#CC785C" stroke-width="2.6"/>
+  <g stroke="#CC785C" stroke-width="2" stroke-linecap="round">
+    <line x1="14" y1="44.6" x2="11.5" y2="53.4"/>
+    <line x1="21" y1="44.6" x2="18.5" y2="53.4"/>
+    <line x1="28" y1="44.6" x2="25.5" y2="53.4"/>
+    <line x1="35" y1="44.6" x2="32.5" y2="53.4"/>
+    <line x1="42" y1="44.6" x2="39.5" y2="53.4"/>
+    <line x1="49" y1="44.6" x2="46.5" y2="53.4"/>
+    <line x1="56" y1="44.6" x2="53.5" y2="53.4"/>
+  </g>
+</svg>

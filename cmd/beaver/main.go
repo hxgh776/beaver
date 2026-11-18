@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/hxgh776/beaver/internal/daemon"
+	"github.com/hxgh776/beaver/internal/desktop"
 	"github.com/hxgh776/beaver/internal/gateway"
 	"github.com/hxgh776/beaver/internal/store"
 	"github.com/hxgh776/beaver/internal/version"
@@ -34,21 +35,27 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+// desktopEntry 无参数入口的桌面分派（变量形式便于参数层测试替换，避免测试真起托盘/窗口）。
+var desktopEntry = cmdDesktop
+
 // run 入口分派；返回进程退出码（os.Exit 收敛在 main，便于参数层回归测试）。
 func run(argv []string) int {
 	args := extractGlobalFlags(argv)
 	if len(args) == 0 {
-		// 无参数（或仅全局 flag）= 直接进入终端面板（VENU-16）：exe 执行就能看到面板，不再依赖浏览器。
-		if err := cmdTui(); err != nil {
-			fmt.Fprintln(os.Stderr, "✗", err.Error())
+		// 无参数（或仅全局 flag）= 桌面面板（双击 exe 即见界面）：
+		// 托盘常驻 + 独立应用窗口；终端界面改由 `beaver tui` 显式进入。
+		if err := desktopEntry(); err != nil {
+			desktopFailure(err)
 			return 1
 		}
 		return 0
 	}
 	var err error
+	holdOnFailure := false
 	switch args[0] {
 	case "tui":
 		err = cmdTui()
+		holdOnFailure = true
 	case "start":
 		err = cmdStart()
 	case "stop":
@@ -83,6 +90,9 @@ func run(argv []string) int {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗", err.Error())
+		if holdOnFailure {
+			holdTuiFailureWindow()
+		}
 		return 1
 	}
 	return 0
@@ -93,8 +103,8 @@ func usage() {
 
 用法: beaver [--home <dir>] [--agent-home <dir>] [--port <n>] <command>
 
-  （无参数）         进入终端面板 TUI（exe 直接运行查看；daemon 未跑则自动拉起）
-  tui                同上，显式进入终端面板
+  （无参数）         打开桌面面板（托盘常驻 + 独立应用窗口；daemon 未跑则自动拉起）
+  tui                进入终端面板 TUI（无 GUI 环境 / 远程终端时使用）
   start              启动 daemon（分离式后台进程）
   stop               停止 daemon
   status             查看 daemon 状态
@@ -106,7 +116,7 @@ func usage() {
   bridge <url>       stdio 反向桥（把 HTTP 上游暴露为本地 stdio server）
   autostart on|off|status    开机自启 daemon
   tray               托盘常驻（自持有 daemon；已跑则挂远端）
-  open               兼容占位（Web 面板已下线，提示改用终端面板 TUI）
+  open               打开桌面面板窗口（Edge/Chrome --app → 默认浏览器兜底）
   version            版本信息
 `)
 }
@@ -198,24 +208,39 @@ func cmdStart() error {
 		fmt.Printf("daemon 已在运行 (pid %d)：http://127.0.0.1:%d\n", pid, config.Settings.Port)
 		return nil
 	}
-	childPid, err := daemon.SpawnDetached(homeOverride)
+	childPid, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
 	}
 	config, _ := s.Load()
-	base := fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
-	client := &http.Client{Timeout: 2 * time.Second}
-	for i := 0; i < 50; i++ {
-		req, _ := http.NewRequest("GET", base+"/api/status", nil)
-		req.Header.Set("authorization", "Bearer "+config.Settings.Token)
-		if res, err := client.Do(req); err == nil && res.StatusCode == http.StatusOK {
-			_ = res.Body.Close()
-			fmt.Printf("daemon 已启动 (pid %d)\n", childPid)
-			fmt.Printf("  API/UI: %s\n", base)
-			fmt.Printf("  MCP   : %s/mcp\n", base)
-			return nil
+	desired := config.Settings.Port
+	if portOverride != nil {
+		desired = *portOverride
+	}
+	client := &http.Client{Timeout: 1 * time.Second}
+	base := ""
+	for i := 0; i < 50 && base == ""; i++ {
+		for offset := 0; offset <= 10; offset++ {
+			candidate := fmt.Sprintf("http://127.0.0.1:%d", desired+offset)
+			req, _ := http.NewRequest("GET", candidate+"/api/status", nil)
+			req.Header.Set("authorization", "Bearer "+config.Settings.Token)
+			if res, err := client.Do(req); err == nil {
+				_ = res.Body.Close()
+				if res.StatusCode == http.StatusOK {
+					base = candidate
+					break
+				}
+			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		if base == "" {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	if base != "" {
+		fmt.Printf("daemon 已启动 (pid %d)\n", childPid)
+		fmt.Printf("  API/UI: %s\n", base)
+		fmt.Printf("  MCP   : %s/mcp\n", base)
+		return nil
 	}
 	logPath := filepath.Join(s.LogsDir(), "daemon.log")
 	return fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
@@ -535,9 +560,15 @@ func cmdGateway(args []string) error {
 	}
 }
 
-// cmdOpen 兼容占位：Web 面板已下线（VENU-24），交互入口统一为终端面板。
-// 保留命令名与退出码 0，避免既有脚本调用直接失败；不再拉起浏览器。
+// cmdOpen 打开面板窗口（open 语义 = 确保 daemon 在跑再开窗，docs/desktop-plan.md §4）。
 func cmdOpen() error {
-	fmt.Println("Web 面板已下线，请直接运行 beaver 进入终端面板 TUI")
+	base, err := desktop.EnsureRunning(homeOverride, portOverride, agentHomeOverride)
+	if err != nil {
+		return err
+	}
+	if err := desktop.OpenAppWindow(base); err != nil {
+		return err
+	}
+	fmt.Printf("已打开面板 %s\n", base)
 	return nil
 }
