@@ -34,7 +34,7 @@ function Status() {
 }
 function BeaverProcs() { @(Get-CimInstance Win32_Process -Filter "name='beaver.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$base*" }) }
 function KillScoped() {
-    foreach ($p in (BeaverProcs())) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }
+    foreach ($p in (BeaverProcs)) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }
 }
 function PanelLog($dir) {
     $p = Join-Path $dir "logs\panel.log"
@@ -88,19 +88,19 @@ try {
     }
     $title = (Get-Process beaver -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1).MainWindowTitle
     if ($title -eq "Beaver（河狸）") { Pass "原生面板窗口存在（标题 $title）" } else { Fail "未找到标题为 Beaver（河狸） 的窗口（实际: $title）" }
-    $procCount = (BeaverProcs()).Count
+    $procCount = (BeaverProcs).Count
     if ($procCount -ge 2) { Pass "进程模型: 托盘 + __panel（$procCount 个）" } else { Fail "进程数不足: $procCount" }
     if ($Screenshot) { Shot "01-first-launch.png" }
 
     # 2) 二次双击：单实例
     Start-Process -FilePath $Exe -ArgumentList @("--home", $homeDir, "--agent-home", $agents, "--port", $Port)
     Start-Sleep -Seconds 3
-    $procCount2 = (BeaverProcs()).Count
+    $procCount2 = (BeaverProcs).Count
     if ($procCount2 -eq $procCount) { Pass "二次双击不新开进程（$procCount2 个）" } else { Fail "二次双击后进程数变化: $procCount → $procCount2" }
 
     # 3) 陈旧 pid + PID 复用
     $trayPid = [int](Get-Content (Join-Path $homeDir "tray.pid"))
-    foreach ($p in (BeaverProcs() | Where-Object { $_.CommandLine -match "__panel" })) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
+    foreach ($p in (BeaverProcs | Where-Object { $_.CommandLine -match "__panel" })) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
     Start-Sleep -Seconds 1
     try { Stop-Process -Id $trayPid -Force } catch {}
     Start-Sleep -Seconds 3
@@ -125,7 +125,7 @@ try {
     # 4) daemon 不可达 → 错误页
     $cur = (Get-Content (Join-Path $homeDir "tray.pid") -ErrorAction SilentlyContinue)
     if ($cur) { try { Stop-Process -Id ([int]$cur) -Force } catch {} }
-    foreach ($p in (BeaverProcs() | Where-Object { $_.CommandLine -match "__panel" })) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
+    foreach ($p in (BeaverProcs | Where-Object { $_.CommandLine -match "__panel" })) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
     Start-Sleep -Seconds 2
     $env:BEAVER_PANEL_URL = "http://127.0.0.1:1"
     Start-Process -FilePath $Exe -ArgumentList @("__panel", "--home", $home2)
