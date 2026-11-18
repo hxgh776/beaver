@@ -24,7 +24,8 @@ const (
 	EnvFail    = "BEAVER_FAKE_MULTICA_FAIL"
 	EnvNoAuth  = "BEAVER_FAKE_MULTICA_NOAUTH"
 	EnvState   = "BEAVER_FAKE_MULTICA_STATE"
-	ArgvSuffix = "\x1f" // 日志行内参数分隔
+	EnvFiles   = "BEAVER_FAKE_MULTICA_FILES" // 覆盖 skill files list 的 JSON 输出
+	ArgvSuffix = "\x1f"                      // 日志行内参数分隔
 )
 
 // stateFile 有状态库（BEAVER_FAKE_MULTICA_STATE 指向 JSON 文件；每次调用读改写，
@@ -209,7 +210,11 @@ func Main(argv []string) int {
 		}
 		out = `{"ok":true}`
 	case rest[0] == "skill" && len(rest) >= 4 && rest[1] == "files" && rest[2] == "list":
-		out = `[{"id":"f-1","path":"SKILL.md","size":120},{"id":"f-2","path":"scripts/run.sh","size":300}]`
+		if files := os.Getenv(EnvFiles); files != "" {
+			out = files
+		} else {
+			out = `[{"id":"f-1","path":"SKILL.md","size":120},{"id":"f-2","path":"scripts/run.sh","size":300}]`
+		}
 	case rest[0] == "skill" && len(rest) >= 4 && rest[1] == "files" && (rest[2] == "upsert" || rest[2] == "delete"):
 		logConfig(rest)
 		out = `{"ok":true}`
