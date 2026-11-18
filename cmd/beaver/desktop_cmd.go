@@ -54,7 +54,7 @@ func cmdDesktop() error {
 
 	// 已有托盘壳 = 单实例：只把面板窗口带到前台。
 	if trayAlive() {
-		base, err := desktop.EnsureRunning(homeOverride)
+		base, err := desktop.EnsureRunning(homeOverride, portOverride, agentHomeOverride)
 		if err != nil {
 			desktopNotify("Beaver 启动失败", err.Error())
 			return err

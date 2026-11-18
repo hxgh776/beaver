@@ -20,7 +20,9 @@ func IsPidAlive(pid int) bool {
 }
 
 // SpawnDetached 分离式启动本 exe 的 daemon 子命令（新进程组，脱离父进程）。
-func SpawnDetached(homeDir string) (int, error) {
+// portOverride / agentHomeOverride 非空时随 --port / --agent-home 传给子进程，
+// 避免重定向只作用于父进程（VENU-16 复审修复）。
+func SpawnDetached(homeDir string, portOverride *int, agentHomeOverride string) (int, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return 0, fmt.Errorf("解析自身可执行文件失败: %w", err)
@@ -28,6 +30,12 @@ func SpawnDetached(homeDir string) (int, error) {
 	cmd := exec.Command(exe, "daemon")
 	if homeDir != "" {
 		cmd.Args = append(cmd.Args, "--home", homeDir)
+	}
+	if portOverride != nil {
+		cmd.Args = append(cmd.Args, "--port", fmt.Sprint(*portOverride))
+	}
+	if agentHomeOverride != "" {
+		cmd.Args = append(cmd.Args, "--agent-home", agentHomeOverride)
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

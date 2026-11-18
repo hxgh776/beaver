@@ -208,24 +208,39 @@ func cmdStart() error {
 		fmt.Printf("daemon 已在运行 (pid %d)：http://127.0.0.1:%d\n", pid, config.Settings.Port)
 		return nil
 	}
-	childPid, err := daemon.SpawnDetached(homeOverride)
+	childPid, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
 	}
 	config, _ := s.Load()
-	base := fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
-	client := &http.Client{Timeout: 2 * time.Second}
-	for i := 0; i < 50; i++ {
-		req, _ := http.NewRequest("GET", base+"/api/status", nil)
-		req.Header.Set("authorization", "Bearer "+config.Settings.Token)
-		if res, err := client.Do(req); err == nil && res.StatusCode == http.StatusOK {
-			_ = res.Body.Close()
-			fmt.Printf("daemon 已启动 (pid %d)\n", childPid)
-			fmt.Printf("  API/UI: %s\n", base)
-			fmt.Printf("  MCP   : %s/mcp\n", base)
-			return nil
+	desired := config.Settings.Port
+	if portOverride != nil {
+		desired = *portOverride
+	}
+	client := &http.Client{Timeout: 1 * time.Second}
+	base := ""
+	for i := 0; i < 50 && base == ""; i++ {
+		for offset := 0; offset <= 10; offset++ {
+			candidate := fmt.Sprintf("http://127.0.0.1:%d", desired+offset)
+			req, _ := http.NewRequest("GET", candidate+"/api/status", nil)
+			req.Header.Set("authorization", "Bearer "+config.Settings.Token)
+			if res, err := client.Do(req); err == nil {
+				_ = res.Body.Close()
+				if res.StatusCode == http.StatusOK {
+					base = candidate
+					break
+				}
+			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		if base == "" {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	if base != "" {
+		fmt.Printf("daemon 已启动 (pid %d)\n", childPid)
+		fmt.Printf("  API/UI: %s\n", base)
+		fmt.Printf("  MCP   : %s/mcp\n", base)
+		return nil
 	}
 	logPath := filepath.Join(s.LogsDir(), "daemon.log")
 	return fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
@@ -547,7 +562,7 @@ func cmdGateway(args []string) error {
 
 // cmdOpen 打开面板窗口（open 语义 = 确保 daemon 在跑再开窗，docs/desktop-plan.md §4）。
 func cmdOpen() error {
-	base, err := desktop.EnsureRunning(homeOverride)
+	base, err := desktop.EnsureRunning(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
 	}

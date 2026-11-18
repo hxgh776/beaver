@@ -40,7 +40,7 @@ func cmdTrayShell(openPanel bool) error {
 	var d *daemon.Daemon
 	var gw *gateway.Gateway
 	if !remote {
-		d = daemon.New(daemon.Options{HomeDir: homeOverride, Port: portOverride})
+		d = daemon.New(daemon.Options{HomeDir: homeOverride, AgentConfigRoot: agentHomeOverride, Port: portOverride})
 		gw = gateway.New(d)
 		gw.Attach()
 		if err := d.Start(); err != nil {
@@ -51,7 +51,11 @@ func cmdTrayShell(openPanel bool) error {
 		}
 	}
 
+	// 自持模式必须用实际绑定端口：config 里的端口可能因 --port 覆盖或冲突漂移而失效。
 	base := fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
+	if d != nil {
+		base = d.BaseURL()
+	}
 	tray := &trayApp{
 		homeOverride: homeOverride,
 		base:         base,
