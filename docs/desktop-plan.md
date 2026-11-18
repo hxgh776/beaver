@@ -69,7 +69,8 @@ PoC 预算半天，跑通「构建 → 双击 → 面板」全链路即定稿。
 ## 4. M2 双击壳：托盘 + App 窗口
 
 - **托盘**：`systray2`（内嵌小型助手二进制、免编译、跨平台；锁版本控供应链）。菜单五项：打开面板 / 网关启停 / 立即同步 / 开机自启开关 / 退出。**退出 = 停 daemon + 撤托盘；关闭窗口 ≠ 退出。**
-- **面板窗口**：优先 Edge `--app`（无地址栏独立窗口，观感同原生应用）→ Chrome `--app` 次选 → 默认浏览器普通标签兜底。封装为 `dam open`，桌面模式与 CLI 共用。实现要点：
+- **面板窗口**：Windows 用 **WebView2 原生壳**（VENU-27）——窗口由 beaver.exe 自建并嵌入系统 WebView2 宿主，不拉起 Edge/Chrome 浏览器进程；`github.com/jchv/go-webview2` 纯 Go、无 CGO，WebView2Loader.dll 内嵌进 exe 从内存加载。窗口由分离式 `__panel` 子进程承载（关闭窗口 = 子进程退出，托盘不受影响），跨进程按窗口标题聚焦已开的窗口。Runtime 缺失 / 非 Windows 回退下列链路：
+  - 优先 Edge `--app`（无地址栏独立窗口，观感同原生应用）→ Chrome `--app` 次选 → 默认浏览器普通标签兜底。封装为 `dam open`，桌面模式与 CLI 共用。实现要点：
   - 端口不写死 6280——从配置与运行态解析（daemon 有端口漂移逻辑）；
   - Windows 经 ShellExecute 启动（`start "" msedge --app=...`），不能 `spawn('msedge')`——后者不解析 App Paths；Edge 在 Win10/11 必在，Chrome 须同时查 HKLM/HKCU App Paths（per-user 安装在 `%LOCALAPPDATA%`，很常见）；
   - 加 `--profile-directory=Default`：多 profile 用户否则会被 Edge 选择器卡住、窗口弹不出来；

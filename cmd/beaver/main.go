@@ -64,6 +64,8 @@ func run(argv []string) int {
 		err = cmdStatus()
 	case "daemon":
 		err = runDaemon() // 内部子命令：分离式后台进程入口
+	case "__panel":
+		err = cmdPanel() // 内部子命令：分离式原生面板窗口进程
 	case "servers":
 		err = cmdServers(args[1:])
 	case "agents":
@@ -116,7 +118,7 @@ func usage() {
   bridge <url>       stdio 反向桥（把 HTTP 上游暴露为本地 stdio server）
   autostart on|off|status    开机自启 daemon
   tray               托盘常驻（自持有 daemon；已跑则挂远端）
-  open               打开桌面面板窗口（Edge/Chrome --app → 默认浏览器兜底）
+  open               打开桌面面板窗口（原生 WebView2 壳；不可用时回退浏览器）
   version            版本信息
 `)
 }
@@ -561,12 +563,13 @@ func cmdGateway(args []string) error {
 }
 
 // cmdOpen 打开面板窗口（open 语义 = 确保 daemon 在跑再开窗，docs/desktop-plan.md §4）。
+// Windows 由分离式 `__panel` 子进程承载原生 WebView2 窗口，无浏览器进程参与。
 func cmdOpen() error {
 	base, err := desktop.EnsureRunning(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
 	}
-	if err := desktop.OpenAppWindow(base); err != nil {
+	if err := desktop.LaunchPanel(homeOverride, portOverride, agentHomeOverride, base); err != nil {
 		return err
 	}
 	fmt.Printf("已打开面板 %s\n", base)

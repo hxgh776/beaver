@@ -29,7 +29,7 @@
 
 单文件 exe **双击即打开桌面面板窗口**（独立应用窗口 + 托盘常驻，观感同 cc-switch / magpie 这类桌面应用），八个页签：概览 / MCP 管理 / MCP 发现 / Agent 分发 / 聚合网关 / 调用日志 / Skill 管理 / 设置。
 
-面板前端是 `packages/web`（React + Tailwind），构建产物经 `go:embed` 打进单文件 exe；窗口用系统自带 Chromium（Edge → Chrome → 默认浏览器）的 `--app` 模式打开，无地址栏、无标签页，任务栏显示为独立应用。托盘菜单含「打开面板」，关闭窗口不等于退出，托盘常驻在后台。
+面板前端是 `packages/web`（React + Tailwind），构建产物经 `go:embed` 打进单文件 exe；Windows 上窗口由 beaver.exe 自己创建并嵌入 **WebView2 原生宿主**（系统组件，Win10/11 自带，与 Tauri / Wails 同款），不再拉起 Edge/Chrome 浏览器进程，无地址栏、无标签页、任务栏显示为独立应用。WebView2 Runtime 缺失时自动回退 Edge/Chrome `--app` 链路。托盘菜单含「打开面板」，关闭窗口不等于退出，托盘常驻在后台。
 
 daemon 未跑时托盘壳自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。
 
@@ -68,7 +68,7 @@ beaver tray       # 只起托盘（不自动开窗口）：网关开关 / 立即
 beaver open       # 打开桌面面板窗口（确保 daemon 在跑再开窗）
 ```
 
-> **桌面形态**：`beaver`（无参数）与 `beaver open` 都会确保 daemon 在跑，然后用 Edge/Chrome 的 `--app` 模式打开独立窗口；二者都没有时兜底默认浏览器。关闭窗口 ≠ 退出，托盘里可再次打开面板或彻底退出。
+> **桌面形态**：`beaver`（无参数）与 `beaver open` 都会确保 daemon 在跑，然后打开**原生 WebView2 窗口**（窗口由 beaver.exe 自建，独立进程承载，不依赖 Edge/Chrome 浏览器进程）；WebView2 Runtime 缺失或非 Windows 平台回退 Edge/Chrome `--app` → 默认浏览器。关闭窗口 ≠ 退出，托盘里可再次打开面板或彻底退出。
 
 > **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。
 
@@ -148,6 +148,8 @@ export GOPROXY=https://goproxy.cn,direct # 国内代理（CI 无需）
 
 > `internal/webui/dist` 已提交构建产物：只改 Go 代码时可直接 `go build`，无需 Node。
 > 改了 `packages/web` 才需要跑前两条 pnpm/node 命令重新生成产物。
+
+> Windows 面板壳用 `github.com/jchv/go-webview2`（纯 Go、无 CGO）：WebView2Loader.dll 已内嵌进 exe，运行时从内存加载，不落盘、不需要额外 DLL；依赖系统 WebView2 Runtime（Win10/11 自带，缺失则回退浏览器）。托盘退出会一并关闭面板窗口进程。
 
 > 所有自动化测试通过沙箱目录重定向，**绝不读写真实 agent 配置**。
 > Linux 构建需 `libayatana-appindicator3-dev libgtk-3-dev`（托盘 cgo 后端）；Windows 纯 Go，macOS 需 Xcode 命令行工具。

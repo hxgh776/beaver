@@ -70,6 +70,8 @@ func cmdTrayShell(openPanel bool) error {
 	}
 	systray.Run(func() { tray.onReady(openPanel) }, func() {
 		_ = os.Remove(trayPidPath())
+		// 托盘退出 = 撤掉整个桌面壳：面板窗口进程一并关闭，不留无主窗口。
+		desktop.ClosePanel()
 		if d != nil {
 			_ = gw.Detach()
 			_ = d.Stop()
@@ -104,13 +106,13 @@ func (t *trayApp) onReady(openPanel bool) {
 
 	go t.refreshLoop()
 	if openPanel {
-		go func() { _ = desktop.OpenAppWindow(t.base) }()
+		go func() { _ = desktop.LaunchPanel(t.homeOverride, portOverride, agentHomeOverride, t.base) }()
 	}
 
 	for {
 		select {
 		case <-mOpen.ClickedCh:
-			go func() { _ = desktop.OpenAppWindow(t.base) }()
+			go func() { _ = desktop.LaunchPanel(t.homeOverride, portOverride, agentHomeOverride, t.base) }()
 		case <-t.mGateway.ClickedCh:
 			t.toggleGateway()
 		case <-mSync.ClickedCh:

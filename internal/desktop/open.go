@@ -1,5 +1,7 @@
 // Package desktop 桌面壳：面板窗口打开链与 daemon 就绪保障。
 // 对应 docs/desktop-plan.md §4 M2 决策：
+//   - Windows 优先原生 WebView2 壳（panel_windows.go，窗口由 beaver.exe 自建，
+//     不依赖浏览器进程）；Runtime 缺失或非 Windows 时回退下面的浏览器链路：
 //   - 窗口优先 Edge --app（无地址栏独立窗口，观感同原生）→ Chrome --app → 默认浏览器兜底；
 //   - Windows 经 ShellExecute 语义（cmd /c start）启动，不直接 spawn（不解析 App Paths）；
 //   - 加 --profile-directory=Default：多 profile 用户否则被 Edge 选择器卡住；
@@ -9,7 +11,9 @@ package desktop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -33,36 +37,80 @@ func EnsureRunning(homeOverride string, portOverride *int, agentHomeOverride str
 	if err != nil {
 		return "", err
 	}
-	pidPath := s.PidPath()
-	if pid, _ := daemon.ReadPid(pidPath); pid > 0 && daemon.IsPidAlive(pid) {
-		return baseURL(config), nil
-	}
-	if _, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride); err != nil {
-		return "", err
-	}
-	// 显式端口不持久化、端口冲突还会向后漂移，因此按候选区间探测实际监听端口。
-	client := &http.Client{Timeout: 1 * time.Second}
-	token := config.Settings.Token
 	desired := config.Settings.Port
 	if portOverride != nil {
 		desired = *portOverride
 	}
-	for i := 0; i < 50; i++ {
-		for offset := 0; offset <= 10; offset++ {
-			base := fmt.Sprintf("http://127.0.0.1:%d", desired+offset)
-			req, _ := http.NewRequest("GET", base+"/api/status", nil)
-			req.Header.Set("authorization", "Bearer "+token)
-			if res, err := client.Do(req); err == nil {
-				_ = res.Body.Close()
-				if res.StatusCode == http.StatusOK {
-					return base, nil
-				}
-			}
+	pidPath := s.PidPath()
+	running := false
+	if pid, _ := daemon.ReadPid(pidPath); pid > 0 && daemon.IsPidAlive(pid) {
+		running = true
+	}
+	if !running {
+		if _, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride); err != nil {
+			return "", err
 		}
-		time.Sleep(200 * time.Millisecond)
+	}
+	// 显式端口不持久化、端口冲突还会向后漂移，因此不论 daemon 是否已在跑，
+	// 都按候选区间探测实际监听端口（VENU-27：第二次双击不再连到配置里的旧端口）。
+	// 已在跑时探测轮次少，未拉起时给足 50×200ms 的启动窗口。
+	rounds, gap := 50, 200*time.Millisecond
+	if running {
+		rounds, gap = 3, 100*time.Millisecond
+	}
+	if base := probeDaemonBase(config, s, desired, rounds, gap); base != "" {
+		return base, nil
+	}
+	if running {
+		// 探测不到（例如 daemon 正在重启）时回退配置端口，保持旧行为可用。
+		return baseURL(config), nil
 	}
 	logPath := filepath.Join(s.LogsDir(), "daemon.log")
 	return "", fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
+}
+
+// probeDaemonBase 在 desired..desired+10 端口区间探测当前 home 的 daemon。
+// 必须校验 /api/status 的 homeDir：同一端口可能被另一份 beaver（另一个数据目录）
+// 或用户真实实例占用，误连会打开别人的面板。返回空串表示未探测到。
+func probeDaemonBase(config *store.Config, s *store.Store, desired, rounds int, gap time.Duration) string {
+	client := &http.Client{Timeout: 1 * time.Second}
+	wantHome := normalizeHome(s.HomeDir)
+	for i := 0; i < rounds; i++ {
+		for offset := 0; offset <= 10; offset++ {
+			base := fmt.Sprintf("http://127.0.0.1:%d", desired+offset)
+			req, _ := http.NewRequest("GET", base+"/api/status", nil)
+			req.Header.Set("authorization", "Bearer "+config.Settings.Token)
+			res, err := client.Do(req)
+			if err != nil {
+				continue
+			}
+			var status struct {
+				HomeDir string `json:"homeDir"`
+			}
+			_ = json.NewDecoder(io.LimitReader(res.Body, 1<<16)).Decode(&status)
+			_ = res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				continue
+			}
+			if status.HomeDir != "" && normalizeHome(status.HomeDir) != wantHome {
+				continue
+			}
+			return base
+		}
+		if i < rounds-1 {
+			time.Sleep(gap)
+		}
+	}
+	return ""
+}
+
+func normalizeHome(p string) string {
+	if p == "" {
+		return ""
+	}
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = strings.TrimSuffix(p, "/")
+	return strings.ToLower(p)
 }
 
 func baseURL(config *store.Config) string {
@@ -70,13 +118,13 @@ func baseURL(config *store.Config) string {
 }
 
 // OpenPanel 确保 daemon 在跑后，以最高保真形态打开面板窗口。
-// homeOverride 为空 = 默认数据目录。
+// homeOverride 为空 = 默认数据目录。Windows 上由原生 WebView2 壳承载。
 func OpenPanel(homeOverride string, portOverride *int, agentHomeOverride string) error {
 	base, err := EnsureRunning(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
 	}
-	return OpenAppWindow(base)
+	return LaunchPanel(homeOverride, portOverride, agentHomeOverride, base)
 }
 
 // OpenAppWindow 按平台最优链打开独立应用窗口（Edge --app → Chrome --app → 默认浏览器）。
