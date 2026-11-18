@@ -1,4 +1,4 @@
-// Package daemon 承载 HTTP 服务（/api + 网关端点挂载）与配置内存态。
+// Package daemon 承载 HTTP 服务（/api + 网关端点挂载 + Web UI 静态托管）与配置内存态。
 // 对应 TS packages/server/src/{daemon,router,http-util,logger,process,api}.ts。
 package daemon
 

@@ -19,5 +19,16 @@ jobs:
       # systray 的 Linux 后端是 cgo（libayatana-appindicator + GTK），装系统库后 vet/test
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libayatana-appindicator3-dev libgtk-3-dev
+      # daemon/webui 需要真实的 Web dist 参与 go:embed（仓库内已提交产物，这里按源码重建校验）
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @beaver/web build
+      - run: node scripts/sync-web-dist.mjs
       - run: go vet ./...
       - run: go test ./... -timeout 20m

@@ -1,6 +1,6 @@
 package daemon
 
-// 设置页配套后端（TUI 设置页）：
+// 设置页配套后端（docs/desktop-plan.md §5 M3）：
 // autostart 开关 / 备份列表与恢复（恢复清 syncState 哈希）/ 打开数据目录 / hasOnboarded。
 
 import (

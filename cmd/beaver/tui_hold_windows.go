@@ -10,7 +10,31 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var procGetConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleProcessList")
+var (
+	procGetConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleProcessList")
+	procGetConsoleWindow      = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleWindow")
+	procShowWindow            = windows.NewLazySystemDLL("user32.dll").NewProc("ShowWindow")
+	procMessageBoxW           = windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW")
+)
+
+const swHide = 0
+
+// hideConsoleWindow 隐藏本进程的控制台窗口（双击启动时避免黑窗遮挡面板）。
+func hideConsoleWindow() {
+	hwnd, _, _ := procGetConsoleWindow.Call()
+	if hwnd == 0 {
+		return
+	}
+	_, _, _ = procShowWindow.Call(hwnd, swHide)
+}
+
+// desktopNotify 双击路径没有可见控制台，启动失败用系统消息框告知用户。
+func desktopNotify(title, message string) {
+	titlePtr, _ := windows.UTF16PtrFromString(title)
+	msgPtr, _ := windows.UTF16PtrFromString(message)
+	const mbIconError = 0x00000010
+	_, _, _ = procMessageBoxW.Call(0, uintptr(unsafe.Pointer(msgPtr)), uintptr(unsafe.Pointer(titlePtr)), mbIconError)
+}
 
 // consoleAttached 报告 stdin/stdout 是否都绑定到 Windows 控制台。
 // 管道、输出重定向、CI（无控制台）时为 false——此时驻留只会挂住脚本。

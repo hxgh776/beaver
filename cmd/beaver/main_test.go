@@ -11,11 +11,8 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 // resetFlags 用例之间清空全局 flag 状态（包级变量不跨用例泄漏）。
@@ -134,19 +131,12 @@ func TestUnknownFlagUsageExit2(t *testing.T) {
 	}
 }
 
-// TestEntryFlagsReachTUI 端到端：经 run() 真实入口分派进 TUI——复现复审报告的两条缺陷
-// 命令行，快照模式渲染一帧概览后正常退出（exit 0）。全局 flag 落到 TUI 启动选项才算通过。
-func TestEntryFlagsReachTUI(t *testing.T) {
-	base := t.TempDir()
-	home := filepath.Join(base, "home")
-	agentHome := filepath.Join(base, "agents")
-	for _, dir := range []string{home, agentHome} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("BEAVER_TUI_SNAPSHOT", "status")
-	// 双保险隔离：不碰真实 agent 配置根（AGENTS.md 运行期隔离规则）。
+// TestEntryFlagsReachDesktop 端到端：经 run() 真实入口分派进桌面面板——复现复审报告的两条
+// 缺陷命令行，无参数必须落到桌面入口而不是 usage（exit 0）。全局 flag 落值才算通过。
+// desktopEntry 在测试内替换为记录调用，避免真起托盘/窗口；桌面窗口渲染在真机冒烟验证。
+func TestEntryFlagsReachDesktop(t *testing.T) {
+	home := t.TempDir()
+	agentHome := t.TempDir()
 	t.Setenv("AGENT_CONTROL_AGENT_HOME", agentHome)
 
 	cases := []struct {
@@ -160,17 +150,16 @@ func TestEntryFlagsReachTUI(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			resetFlags()
-			done := make(chan int, 1)
-			go func() { done <- run(tc.argv) }()
-			select {
-			case code := <-done:
-				if code != 0 {
-					t.Fatalf("run(%v) 退出码 = %d, 期望 0（TUI 快照渲染成功）", tc.argv, code)
-				}
-			case <-time.After(90 * time.Second):
-				buf := make([]byte, 1<<20)
-				n := runtime.Stack(buf, true)
-				t.Fatalf("run(%v) 超时（疑似死锁）\n%s", tc.argv, buf[:n])
+			reached := false
+			saved := desktopEntry
+			desktopEntry = func() error { reached = true; return nil }
+			defer func() { desktopEntry = saved }()
+
+			if code := run(tc.argv); code != 0 {
+				t.Fatalf("run(%v) 退出码 = %d, 期望 0（进入桌面面板）", tc.argv, code)
+			}
+			if !reached {
+				t.Fatalf("run(%v) 未分派到桌面入口", tc.argv)
 			}
 			if homeOverride != home {
 				t.Errorf("homeOverride = %q, 期望 %q", homeOverride, home)
