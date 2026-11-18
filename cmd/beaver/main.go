@@ -41,14 +41,17 @@ func run(argv []string) int {
 		// 无参数（或仅全局 flag）= 直接进入终端面板（VENU-16）：exe 执行就能看到面板，不再依赖浏览器。
 		if err := cmdTui(); err != nil {
 			fmt.Fprintln(os.Stderr, "✗", err.Error())
+			holdTuiFailureWindow() // 双击启动时留住窗口，避免错误被一闪而过的控制台吞掉
 			return 1
 		}
 		return 0
 	}
 	var err error
+	holdOnFailure := false
 	switch args[0] {
 	case "tui":
 		err = cmdTui()
+		holdOnFailure = true
 	case "start":
 		err = cmdStart()
 	case "stop":
@@ -83,6 +86,9 @@ func run(argv []string) int {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "✗", err.Error())
+		if holdOnFailure {
+			holdTuiFailureWindow()
+		}
 		return 1
 	}
 	return 0
