@@ -397,6 +397,9 @@ func (p *skillsPage) uninstall(a *App, sk *skills.WithStatus) {
 		if len(res.Preserved) > 0 {
 			msg += "（保留用户改动: " + strings.Join(res.Preserved, ", ") + "）"
 		}
+		if len(res.Warnings) > 0 {
+			msg += "；远端警告: " + strings.Join(res.Warnings, "；")
+		}
 		a.info(msg)
 		p.load(a)
 	})

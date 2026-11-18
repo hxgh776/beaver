@@ -42,7 +42,7 @@ type ServiceOptions struct {
 	SaveConfig func() error
 	// AgentRoot agent 主目录（测试传沙箱根；空 = 用户主目录）
 	AgentRoot string
-// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
+	// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
 	FetchZip func(ctx context.Context, url string) ([]byte, error)
 	// SkillsShBase 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）
 	SkillsShBase string
@@ -101,10 +101,12 @@ type UpdateReport struct {
 	CheckedAt string            `json:"checkedAt"`
 }
 
-// UninstallResult 卸载结果：preserved = 用户改过而保留的目标目录；backup = 备份目录。
+// UninstallResult 卸载结果：preserved = 用户改过而保留的目标目录；backup = 备份目录；
+// warnings = 远端型 agent 清理失败的降级警告（不阻断本地卸载）。
 type UninstallResult struct {
 	Preserved []string `json:"preserved"`
 	Backup    *string  `json:"backup"`
+	Warnings  []string `json:"warnings,omitempty"`
 }
 
 // ToggleResult 停用返回 preserved（用户改过的目录原样保留）。
@@ -704,6 +706,18 @@ func (s *Service) setPushedHash(agentType, skillID, hash string) {
 	bySkill[skillID] = hash
 }
 
+// targetActive 该目标是否曾启用或推送（决定卸载时要不要清理它）。
+// 远端型 agent 的启用位与推送记录任一为真即视为活跃：只有确实推上去过的条目，
+// 卸载才允许按名 Remove——防止误删 workspace 库里的同名自建技能。
+func (s *Service) targetActive(skillID, agentType string) bool {
+	for _, t := range s.opts.GetConfig().SkillTargets {
+		if t.SkillID == skillID && t.AgentType == agentType {
+			return t.Enabled || s.pushedHash(agentType, skillID) != ""
+		}
+	}
+	return s.pushedHash(agentType, skillID) != ""
+}
+
 // CheckUpdates 更新检查：按 repo 分组下载远端，比对 SSOT 哈希。
 func (s *Service) CheckUpdates(ctx context.Context) (UpdateReport, error) {
 	config := s.opts.GetConfig()
@@ -893,6 +907,7 @@ func (s *Service) Uninstall(skillID string) (UninstallResult, error) {
 		safeDir = row.Directory
 	}
 	preserved := []string{}
+	warnings := []string{}
 	var backup *string
 	if safeDir != "" {
 		backup, err = s.backupSkill(row)
@@ -900,9 +915,24 @@ func (s *Service) Uninstall(skillID string) (UninstallResult, error) {
 			return UninstallResult{}, err
 		}
 		for _, agentType := range SkillAgentList {
+			remote := s.sinkOf(agentType) != nil
+			if !s.targetActive(row.ID, agentType) {
+				// 从未启用的目标不清理（远端尤其不能按名 Remove）；顺带清掉可能的
+				// 残留推送记账，防止重装同 ID 技能时被误判为已推送
+				if remote {
+					s.setPushedHash(agentType, row.ID, "")
+				}
+				continue
+			}
 			p, err := s.disableTarget(row, agentType)
 			if err != nil {
-				return UninstallResult{}, err
+				if !remote {
+					return UninstallResult{}, err
+				}
+				// 远端清理失败（如 multica CLI 缺失/未登录）降级为警告，不阻断本地卸载
+				s.setPushedHash(agentType, row.ID, "")
+				warnings = append(warnings, fmt.Sprintf("%s: 远端清理失败，已跳过（不影响本地卸载）: %v", agentType, err))
+				continue
 			}
 			if p != nil && !containsStr(preserved, *p) {
 				preserved = append(preserved, *p)
@@ -932,7 +962,7 @@ func (s *Service) Uninstall(skillID string) (UninstallResult, error) {
 	if err := s.opts.SaveConfig(); err != nil {
 		return UninstallResult{}, err
 	}
-	return UninstallResult{Preserved: preserved, Backup: backup}, nil
+	return UninstallResult{Preserved: preserved, Backup: backup, Warnings: warnings}, nil
 }
 
 // backupSkill 卸载/更新前整目录备份：skill-backups/<ts>_<slug>/{skill/, meta.json}，保留 20 份。

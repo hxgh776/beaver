@@ -6,17 +6,20 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hxgh776/beaver/internal/store"
 )
 
 type stubSink struct {
-	pushes  []string // 记录推送的 skill directory
-	removes []string
-	pushErr error
+	pushes    []string // 记录推送的 skill directory
+	removes   []string // 记录成功的 Remove（removeErr 非nil 时不记录）
+	pushErr   error
+	removeErr error
 }
 
 func (s *stubSink) Push(_ context.Context, row store.InstalledSkill, _ string) error {
@@ -28,6 +31,9 @@ func (s *stubSink) Push(_ context.Context, row store.InstalledSkill, _ string) e
 }
 
 func (s *stubSink) Remove(_ context.Context, row store.InstalledSkill) error {
+	if s.removeErr != nil {
+		return s.removeErr
+	}
 	s.removes = append(s.removes, row.Directory)
 	return nil
 }
@@ -171,5 +177,81 @@ func TestUpdateRepushesEnabledRemoteTarget(t *testing.T) {
 	}
 	if got := e.config.SkillPushState["multica"]["skill-demo-skill"]; got != "" {
 		t.Fatalf("卸载后应清推送哈希: %v", e.config.SkillPushState)
+	}
+}
+
+// 缺陷回归（审核阻断问题 1）：从未启用过的技能卸载时，不得向远端库发任何
+// Remove——workspace 里同名自建技能必须保留；本地 SSOT/注册行照常清理。
+func TestUninstallNeverEnabledLeavesRemoteUntouched(t *testing.T) {
+	e, sink := newSinkEnv(t)
+	seedSSOT(t, e, "demo-skill", "正文")
+	if _, err := e.service.admit(admitInput{
+		Source: "local", DirectoryHint: "demo-skill",
+		SourceDir: filepath.Join(e.sandbox, "skills", "demo-skill"),
+	}); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	res, err := e.service.Uninstall("skill-demo-skill")
+	if err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if len(res.Warnings) != 0 {
+		t.Fatalf("不应产生警告: %v", res.Warnings)
+	}
+	if len(sink.pushes) != 0 || len(sink.removes) != 0 {
+		t.Fatalf("从未启用 → 卸载不得触碰远端: pushes=%v removes=%v", sink.pushes, sink.removes)
+	}
+	if dirExists(filepath.Join(e.sandbox, "skills", "demo-skill")) {
+		t.Fatalf("SSOT 目录应被清理")
+	}
+	if got := e.config.SkillPushState["multica"]["skill-demo-skill"]; got != "" {
+		t.Fatalf("残留推送记账应被清理: %v", e.config.SkillPushState)
+	}
+	for _, row := range e.config.Skills {
+		if row.ID == "skill-demo-skill" {
+			t.Fatalf("注册行应被删除")
+		}
+	}
+}
+
+// 缺陷回归（审核阻断问题 2）：已启用的远端目标在 multica CLI 缺失/未登录
+//（Remove 失败）时，本地卸载仍必须完成，远端失败降级为报告中的警告，
+// 且不再保留推送记账。
+func TestUninstallRemoteRemoveFailureDegradesToWarning(t *testing.T) {
+	e, sink := newSinkEnv(t)
+	seedSSOT(t, e, "demo-skill", "正文")
+	if _, err := e.service.admit(admitInput{
+		Source: "local", DirectoryHint: "demo-skill",
+		SourceDir: filepath.Join(e.sandbox, "skills", "demo-skill"),
+	}); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	if _, err := e.service.Toggle("skill-demo-skill", "multica", true); err != nil {
+		t.Fatalf("Toggle on: %v", err)
+	}
+	if e.config.SkillPushState["multica"]["skill-demo-skill"] == "" {
+		t.Fatalf("前置：启用应记账推送哈希")
+	}
+	sink.removeErr = fmt.Errorf("找不到 multica CLI（PATH 中无此命令）")
+	res, err := e.service.Uninstall("skill-demo-skill")
+	if err != nil {
+		t.Fatalf("CLI 缺失时本地卸载不得失败: %v", err)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "multica") {
+		t.Fatalf("远端失败应降级为一条 multica 警告: %v", res.Warnings)
+	}
+	if len(sink.removes) != 0 {
+		t.Fatalf("Remove 失败不应记入成功列表: %v", sink.removes)
+	}
+	if dirExists(filepath.Join(e.sandbox, "skills", "demo-skill")) {
+		t.Fatalf("本地 SSOT 仍应被清理")
+	}
+	if got := e.config.SkillPushState["multica"]["skill-demo-skill"]; got != "" {
+		t.Fatalf("降级后应清推送记账: %v", e.config.SkillPushState)
+	}
+	for _, row := range e.config.Skills {
+		if row.ID == "skill-demo-skill" {
+			t.Fatalf("注册行应被删除")
+		}
 	}
 }
