@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,7 +19,6 @@ import (
 	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
 	"github.com/hxgh776/beaver/internal/syncengine"
-	"github.com/hxgh776/beaver/internal/webui"
 	"github.com/hxgh776/beaver/internal/writeengine"
 )
 
@@ -78,8 +75,10 @@ type Options struct {
 	AgentConfigRoot string
 	// Port nil = 用 config.settings.port（端口漂移会持久化）；0 = 临时端口（不持久化）；N = 固定端口。
 	Port *int
-	// WebDistDir nil = 内嵌资源；非 nil = 从该目录读（开发调试用）。
-	WebDistDir *string
+	// SkillsShBase 非空 = 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）。
+	SkillsShBase string
+	// SkillsFetchZip 非空 = 覆盖技能仓库 ZIP 下载实现（测试注入内存 ZIP；nil = 真实网络下载）。
+	SkillsFetchZip func(ctx context.Context, url string) ([]byte, error)
 }
 
 // Daemon 单进程承载 HTTP 服务与配置内存态。
@@ -150,10 +149,12 @@ func New(opts Options) *Daemon {
 		logger.Warn("数据目录已重定向但 agent 配置仍指向真实用户主目录——测试场景请传 agentConfigRoot")
 	}
 	d.Skills = skills.NewService(skills.ServiceOptions{
-		HomeDir:    st.HomeDir,
-		GetConfig:  func() *store.Config { return d.Config },
-		SaveConfig: func() error { return d.SaveConfig() },
-		AgentRoot:  agentRoot,
+		HomeDir:      st.HomeDir,
+		GetConfig:    func() *store.Config { return d.Config },
+		SaveConfig:   func() error { return d.SaveConfig() },
+		AgentRoot:    agentRoot,
+		SkillsShBase: opts.SkillsShBase,
+		FetchZip:     opts.SkillsFetchZip,
 	})
 	return d
 }
@@ -333,65 +334,8 @@ func (d *Daemon) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3) Web UI 静态资源
-	d.serveStatic(pathname, w)
-}
-
-func (d *Daemon) serveStatic(pathname string, w http.ResponseWriter) {
-	var content fs.FS
-	if d.opts.WebDistDir != nil {
-		content = os.DirFS(*d.opts.WebDistDir)
-	} else {
-		sub, err := fs.Sub(webui.Dist, "dist")
-		if err != nil {
-			SendError(w, 404, "Web UI 未安装（web/dist 缺失），可用 CLI 或 /api 操作")
-			return
-		}
-		content = sub
-	}
-	name := pathname
-	if name == "/" || name == "" {
-		name = "index.html"
-	}
-	name = path.Clean(strings.TrimPrefix(name, "/"))
-	data, err := fs.ReadFile(content, name)
-	if err != nil {
-		// SPA 路由回退：无扩展名的路径回退到 index.html
-		if path.Ext(name) == "" {
-			data, err = fs.ReadFile(content, "index.html")
-			name = "index.html"
-		}
-		if err != nil {
-			SendError(w, 404, "not found")
-			return
-		}
-	}
-	w.Header().Set("Content-Type", contentTypeOf(name))
-	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
-	_, _ = w.Write(data)
-}
-
-func contentTypeOf(name string) string {
-	switch strings.ToLower(path.Ext(name)) {
-	case ".html":
-		return "text/html; charset=utf-8"
-	case ".js":
-		return "text/javascript; charset=utf-8"
-	case ".css":
-		return "text/css; charset=utf-8"
-	case ".svg":
-		return "image/svg+xml"
-	case ".json":
-		return "application/json"
-	case ".png":
-		return "image/png"
-	case ".ico":
-		return "image/x-icon"
-	case ".woff2":
-		return "font/woff2"
-	default:
-		return "application/octet-stream"
-	}
+	// 3) 其余路径：Web 面板已下线（VENU-24），只保留 REST / MCP 端点。
+	SendError(w, 404, "Web 面板已下线，请运行 beaver 进入终端面板 TUI", "WEB_UI_REMOVED")
 }
 
 // isHeaderWritten 用一个空写探测响应头是否已发（net/http 无公开查询接口）。

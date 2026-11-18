@@ -1,3 +1,5 @@
+// Package desktop 桌面壳资源：托盘图标等。
+// VENU-24 起 Web 面板下线，浏览器窗口链路（Edge/Chrome --app）随面板一并移除。
 package desktop
 
 // 托盘图标：内嵌品牌 logo（PNG-in-ICO，Vista+ 支持），免 cgo、免外部资源文件。

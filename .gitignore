@@ -1,8 +1,7 @@
-node_modules/
 .worktrees/
+# Web 面板已下线（VENU-24）：node_modules/dist 仅用于隐藏旧工作区残留目录，不再参与构建
+node_modules/
 dist/
-# 例外：Go embed 的 Web UI 产物必须入库（go:embed all:dist 无目录即编译失败）
-!internal/webui/dist/
 coverage/
 *.log
 .DS_Store

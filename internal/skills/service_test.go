@@ -482,11 +482,8 @@ func TestSearchSkillsSh(t *testing.T) {
 		_, _ = w.Write([]byte(payload))
 	}))
 	defer ts.Close()
-	oldBase := skillsShBaseURL
-	skillsShBaseURL = ts.URL
-	defer func() { skillsShBaseURL = oldBase }()
 
-	res, err := SearchSkillsSh(context.Background(), "find", 20, 0, 0)
+	res, err := SearchSkillsSh(context.Background(), ts.URL, "find", 20, 0, 0)
 	mustNoErr(t, err)
 	if res.Count != 3 {
 		t.Fatalf("count 应为 3（上游原始值）: %v", res.Count)
