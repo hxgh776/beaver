@@ -517,7 +517,7 @@ func TestNormalizeDenormalizeRoundTrips(t *testing.T) {
 	}
 }
 
-// 注册表：10 个 agent 均有适配器与候选路径
+// 注册表：11 个 agent 均有适配器与候选路径
 func TestAllAgentsHaveAdapters(t *testing.T) {
 	for _, def := range adapters.AgentDefinitions("") {
 		if len(def.Adapter.CandidatePaths()) == 0 {

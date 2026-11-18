@@ -23,9 +23,11 @@ import (
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // 与 TS zod enum 保持一致（zcode/workbuddy 暂不在分组可选列表）。
+// multica 可关联分组：分组勾选的 server 经分发管线收敛进 workspace MCP 库。
 var groupAgentTypes = []string{
 	store.AgentClaudeCode, store.AgentCodex, store.AgentCursor, store.AgentTrae,
 	store.AgentOpencode, store.AgentClaudeDesktop, store.AgentWindsurf, store.AgentGeminiCLI,
+	store.AgentMultica,
 }
 
 // serverInputRaw API 请求体的原始形态（字段缺失 = nil）。
@@ -831,6 +833,9 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 
 	// —— Skill 管理（S2，吸收自 cc-switch 的防御性设计；服务在 internal/skills） ——
 	registerSkillRoutes(rt, d)
+
+	// —— Multica 外部后端（VENU-15：workspace MCP 库与 Skill 库管理） ——
+	registerMulticaRoutes(rt, d)
 }
 
 // registerSkillRoutes skills 全量路由（对齐 TS api.ts 的 skills 段响应形状）。

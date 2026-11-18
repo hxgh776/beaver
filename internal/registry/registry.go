@@ -270,11 +270,27 @@ type AgentDetection struct {
 }
 
 // DetectAgents 判定标准只有一条：任一候选配置文件存在 → 已检测到。
+// 远端型适配器（RemoteDetector，如 multica）不走文件存在性，由适配器自行探测。
 func DetectAgents(agents map[string]AgentRef) []AgentDetection {
 	out := []AgentDetection{}
 	for _, def := range adapters.AgentDefinitions("") {
 		src, ok := agents[def.Type]
 		if !ok {
+			continue
+		}
+		if rd, isRemote := src.Adapter.(adapters.RemoteDetector); isRemote {
+			detected, location := rd.DetectRemote()
+			paths := []string{}
+			if location != "" {
+				paths = append(paths, location)
+			}
+			out = append(out, AgentDetection{
+				AgentType:   def.Type,
+				DisplayName: src.DisplayName,
+				Detected:    detected,
+				ConfigPaths: paths,
+				Transports:  src.Adapter.Transports(),
+			})
 			continue
 		}
 		// 路径取自传入的 agents 表（支持沙箱重定向），展示名/传输取自同一来源

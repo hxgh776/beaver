@@ -70,6 +70,9 @@ type AgentSyncReport struct {
 	Changes     []SyncChange      `json:"changes"`
 	Conflicts   []SyncConflict    `json:"conflicts"`
 	Unsupported []UnsupportedItem `json:"unsupported"`
+	// Error 该 agent 本次同步失败的摘要。仅远端型 agent（RemoteAgent）会把失败
+	// 隔离在报告里继续跑其余 agent；文件型 agent 失败仍使整个 Sync 返回错误。
+	Error string `json:"error,omitempty"`
 }
 
 type Report struct {
@@ -113,7 +116,20 @@ func Sync(config *store.Config, opts Options, input Input) (Report, error) {
 		}
 		agentReport, err := syncAgent(def.Type, src.Adapter, config, opts, input, journal)
 		if err != nil {
-			return Report{}, err
+			// 远端型 agent（multica 等）：失败隔离在本 agent 的报告里（CLI 缺失/未登录/
+			// 无权限等属常态），不拖垮其余 agent；文件型失败仍视为整个同步失败。
+			if ra, ok := src.Adapter.(adapters.RemoteAgent); ok && ra.IsRemote() {
+				agentReport = AgentSyncReport{
+					AgentType:   def.Type,
+					File:        firstCandidate(src.Adapter),
+					Changes:     []SyncChange{},
+					Conflicts:   []SyncConflict{},
+					Unsupported: []UnsupportedItem{},
+					Error:       err.Error(),
+				}
+			} else {
+				return Report{}, err
+			}
 		}
 		for _, c := range agentReport.Changes {
 			if c.Key == store.GatewayKey && c.Action == "upsert" {
@@ -351,6 +367,14 @@ func resolveTargetFile(adapter adapters.Adapter) string {
 		}
 	}
 	if len(paths) > 0 {
+		return paths[0]
+	}
+	return ""
+}
+
+// firstCandidate 首个候选路径（错误报告里的 File 展示用）。
+func firstCandidate(adapter adapters.Adapter) string {
+	if paths := adapter.CandidatePaths(); len(paths) > 0 {
 		return paths[0]
 	}
 	return ""

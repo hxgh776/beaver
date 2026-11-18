@@ -25,6 +25,13 @@ const (
 	backupKeep = 20
 )
 
+// SkillSink 外部后端技能库的投影通道（远端型 agent，如 multica workspace Skill 库）。
+// 实现方保证幂等：Push = create-or-update 全量对齐；Remove = 目标不存在时静默成功。
+type SkillSink interface {
+	Push(ctx context.Context, row store.InstalledSkill, ssotDir string) error
+	Remove(ctx context.Context, row store.InstalledSkill) error
+}
+
 // ServiceOptions 服务装配。
 type ServiceOptions struct {
 	// HomeDir 数据目录（SSOT 根 = <HomeDir>/skills）
@@ -35,10 +42,12 @@ type ServiceOptions struct {
 	SaveConfig func() error
 	// AgentRoot agent 主目录（测试传沙箱根；空 = 用户主目录）
 	AgentRoot string
-	// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
+// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
 	FetchZip func(ctx context.Context, url string) ([]byte, error)
 	// SkillsShBase 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）
 	SkillsShBase string
+	// Sinks 远端型 agent 的投影通道（agentType → sink）。不在表内的 agent 走本地目录投影。
+	Sinks map[string]SkillSink
 }
 
 // CollectionInstallReport 集合安装结果：installed 与 failed 互斥；单个技能失败不中断整批。
@@ -108,6 +117,7 @@ type Service struct {
 	opts       ServiceOptions
 	ssotDir    string
 	targetDirs map[string]string
+	sinks      map[string]SkillSink
 }
 
 func NewService(opts ServiceOptions) *Service {
@@ -115,8 +125,12 @@ func NewService(opts ServiceOptions) *Service {
 		opts:       opts,
 		ssotDir:    filepath.Join(opts.HomeDir, "skills"),
 		targetDirs: SkillDirsForAgents(opts.AgentRoot),
+		sinks:      opts.Sinks,
 	}
 }
+
+// sinkOf agentType 的远端投影通道（无则本地目录投影）。
+func (s *Service) sinkOf(agentType string) SkillSink { return s.sinks[agentType] }
 
 func (s *Service) SkillsDir() string { return s.ssotDir }
 
@@ -167,6 +181,26 @@ func (s *Service) projectionStatus(row store.InstalledSkill) ([]ProjectionStatus
 	}
 	status := []ProjectionStatus{}
 	for _, agentType := range SkillAgentList {
+		// 远端型 agent：不做本地文件比对，以「上次推送时的 SSOT 哈希」为基准
+		// 判断漂移（远端内容不可读；SSOT 变了即提示需要重新推送）
+		if s.sinkOf(agentType) != nil {
+			projected, modified := false, false
+			if pushed := s.pushedHash(agentType, row.ID); pushed != "" {
+				if ssotHash == nil {
+					modified = true // SSOT 缺失但推送记录在——按用户自维护对待
+				} else {
+					projected = pushed == *ssotHash
+					modified = !projected
+				}
+			}
+			status = append(status, ProjectionStatus{
+				AgentType: agentType,
+				Enabled:   enabledBy[agentType],
+				Projected: projected,
+				Modified:  modified,
+			})
+			continue
+		}
 		dir := filepath.Join(s.targetDirs[agentType], row.Directory)
 		projected := false
 		modified := false
@@ -582,6 +616,18 @@ func (s *Service) enableTarget(row store.InstalledSkill, agentType string) error
 	if !dirExists(ssot) {
 		return inputErrf("SSOT 目录缺失: %s", row.Directory)
 	}
+	// 远端型 agent：推送外部技能库（create-or-update），成功后记录推送哈希
+	if sink := s.sinkOf(agentType); sink != nil {
+		if err := sink.Push(context.Background(), row, ssot); err != nil {
+			return err
+		}
+		ssotHash, err := ComputeDirHash(ssot)
+		if err != nil {
+			return err
+		}
+		s.setPushedHash(agentType, row.ID, ssotHash)
+		return nil
+	}
 	ssotHash, err := ComputeDirHash(ssot)
 	if err != nil {
 		return err
@@ -601,6 +647,14 @@ func (s *Service) enableTarget(row store.InstalledSkill, agentType string) error
 }
 
 func (s *Service) disableTarget(row store.InstalledSkill, agentType string) (*string, error) {
+	// 远端型 agent：按名从外部技能库移除（用户已确认收敛删除语义），无保留目录概念
+	if sink := s.sinkOf(agentType); sink != nil {
+		if err := sink.Remove(context.Background(), row); err != nil {
+			return nil, err
+		}
+		s.setPushedHash(agentType, row.ID, "")
+		return nil, nil
+	}
 	ssotHash, err := s.ssotHash(row)
 	if err != nil {
 		return nil, err
@@ -621,6 +675,33 @@ func (s *Service) disableTarget(row store.InstalledSkill, agentType string) (*st
 		return nil, nil
 	}
 	return &dest, nil
+}
+
+// pushedHash 查询推送哈希（config.SkillPushState[agentType][skillID]）。
+func (s *Service) pushedHash(agentType, skillID string) string {
+	bySkill := s.opts.GetConfig().SkillPushState[agentType]
+	if bySkill == nil {
+		return ""
+	}
+	return bySkill[skillID]
+}
+
+// setPushedHash 记录/清除推送哈希（"" = 清除）。只改内存，持久化由调用方 SaveConfig 完成。
+func (s *Service) setPushedHash(agentType, skillID, hash string) {
+	config := s.opts.GetConfig()
+	if config.SkillPushState == nil {
+		config.SkillPushState = map[string]map[string]string{}
+	}
+	bySkill := config.SkillPushState[agentType]
+	if bySkill == nil {
+		bySkill = map[string]string{}
+		config.SkillPushState[agentType] = bySkill
+	}
+	if hash == "" {
+		delete(bySkill, skillID)
+		return
+	}
+	bySkill[skillID] = hash
 }
 
 // CheckUpdates 更新检查：按 repo 分组下载远端，比对 SSOT 哈希。
@@ -748,6 +829,14 @@ func (s *Service) Update(ctx context.Context, skillID string) (store.InstalledSk
 		if t.SkillID != skillID || !t.Enabled {
 			continue
 		}
+		// 远端型 agent：重推最新 SSOT（create-or-update 幂等），推送哈希同步记账
+		if sink := s.sinkOf(t.AgentType); sink != nil {
+			if err := sink.Push(ctx, row, ssot); err != nil {
+				return store.InstalledSkill{}, err
+			}
+			s.setPushedHash(t.AgentType, row.ID, newHash)
+			continue
+		}
 		dest := filepath.Join(s.targetDirs[t.AgentType], row.Directory)
 		if !dirExists(dest) {
 			if err := ReplaceWithCopy(ssot, dest); err != nil {
@@ -853,8 +942,11 @@ func (s *Service) backupSkill(row store.InstalledSkill) (*string, error) {
 	if dirExists(source) {
 		from = source
 	} else {
-		// SSOT 缺失时从任一投影回捞（skill.rs:3859-3891）
+		// SSOT 缺失时从任一投影回捞（skill.rs:3859-3891）；远端型 agent 无本地目录可回捞
 		for _, agentType := range SkillAgentList {
+			if s.targetDirs[agentType] == "" {
+				continue
+			}
 			dest := filepath.Join(s.targetDirs[agentType], row.Directory)
 			if dirExists(dest) {
 				from = dest
