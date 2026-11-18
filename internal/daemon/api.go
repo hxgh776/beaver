@@ -18,6 +18,7 @@ import (
 	"github.com/hxgh776/beaver/internal/secretbox"
 	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
+	"github.com/hxgh776/beaver/internal/version"
 )
 
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -199,6 +200,7 @@ func registerAPIRoutes(rt *Router, d *Daemon) {
 		authRequired := d.Config.Settings.AuthRequired != nil && *d.Config.Settings.AuthRequired
 		SendJSON(ctx.Res, 200, map[string]any{
 			"version":        Version,
+		"commit":         version.Commit(),
 			"uptimeSec":      d.UptimeSec(),
 			"homeDir":        d.Store.HomeDir,
 			"port":           d.ActualPort(),

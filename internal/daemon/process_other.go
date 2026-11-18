@@ -19,6 +19,10 @@ func IsPidAlive(pid int) bool {
 	return err == nil
 }
 
+// IsSameExecutable 非 Windows 上无法可靠读取进程镜像路径，
+// 退化为存活探测（Windows 侧用 QueryFullProcessImageName 做身份校验）。
+func IsSameExecutable(pid int) bool { return IsPidAlive(pid) }
+
 // SpawnDetached 分离式启动本 exe 的 daemon 子命令（新进程组，脱离父进程）。
 // portOverride / agentHomeOverride 非空时随 --port / --agent-home 传给子进程，
 // 避免重定向只作用于父进程（VENU-16 复审修复）。

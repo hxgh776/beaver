@@ -6,20 +6,64 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/windows"
 )
 
-// IsPidAlive 存活探测：OpenProcess 成功即视为存活（被拒绝访问也说明进程存在）。
+const (
+	processQueryLimitedInformation = 0x1000
+	processSynchronize             = 0x00100000
+)
+
+// IsPidAlive 存活探测：只有进程仍然存在且未退出才算存活。
+// OpenProcess 成功仅说明该 pid 当前被某个进程占用（pid 可能已被系统复用），
+// 因此还要 WaitForSingleObject(0) 返回 WAIT_TIMEOUT（句柄未 signaled = 未退出）。
 func IsPidAlive(pid int) bool {
-	const processQueryLimitedInformation = 0x1000
+	if pid <= 0 {
+		return false
+	}
+	// SYNCHRONIZE 是 WaitForSingleObject 的必需权限（只给 QUERY_LIMITED 会
+	// 返回 ERROR_ACCESS_DENIED，把活进程误判成已退出）。
+	h, err := windows.OpenProcess(processQueryLimitedInformation|processSynchronize, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+	event, err := windows.WaitForSingleObject(h, 0)
+	if err != nil {
+		return false
+	}
+	return event == uint32(windows.WAIT_TIMEOUT)
+}
+
+// IsSameExecutable 判断 pid 是否为同一份 beaver 可执行文件。
+// pid 文件可能残留（崩溃 / 重启），而该 pid 已被系统复用给无关进程；
+// 只按 pid 判活会让托盘认为「已在运行」，从而不再拉起 daemon 并导航到空端口。
+func IsSameExecutable(pid int) bool {
+	if !IsPidAlive(pid) {
+		return false
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
 	h, err := windows.OpenProcess(processQueryLimitedInformation, false, uint32(pid))
 	if err != nil {
 		return false
 	}
-	_ = windows.CloseHandle(h)
-	return true
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_PATH)
+	size := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &size); err != nil {
+		return false
+	}
+	image := windows.UTF16ToString(buf[:size])
+	if image == "" {
+		return false
+	}
+	return strings.EqualFold(filepath.Clean(image), filepath.Clean(self))
 }
 
 // SpawnDetached 分离式启动本 exe 的 daemon 子命令：脱离父进程生命周期，隐藏窗口。

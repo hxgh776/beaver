@@ -10,7 +10,10 @@ package desktop
 // 子进程退出，托盘 / CLI 立即返回，不会残留 WebView2 宿主或阻塞 daemon。
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 )
 
 // PanelTitle 原生面板窗口标题。跨进程聚焦（FindWindow）按它匹配，改动需同步。
@@ -66,3 +69,22 @@ func FocusPanel() bool { return focusPanelWindow() }
 
 // ClosePanel 关闭已有原生面板窗口（托盘退出时用，避免留下无主窗口进程）。
 func ClosePanel() { closePanelWindow() }
+
+// appendPanelLog 面板 / daemon 就绪链路的诊断日志，始终写入 <home>/logs/panel.log。
+// 双击路径没有可见控制台，静默失败（白屏、托盘未起）只能靠这份日志定位，
+// 因此不设 debug 开关；写入失败本身也不能影响主流程。
+func appendPanelLog(homeDir, format string, args ...any) {
+	if homeDir == "" {
+		return
+	}
+	dir := filepath.Join(homeDir, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "panel.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
+}

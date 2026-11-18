@@ -42,12 +42,20 @@ func EnsureRunning(homeOverride string, portOverride *int, agentHomeOverride str
 		desired = *portOverride
 	}
 	pidPath := s.PidPath()
-	running := false
-	if pid, _ := daemon.ReadPid(pidPath); pid > 0 && daemon.IsPidAlive(pid) {
-		running = true
+	pid, _ := daemon.ReadPid(pidPath)
+	// 陈旧 pid 文件 + PID 复用：只按 pid 判活会把无关进程认成 daemon，
+	// 从而跳过拉起，最后导航到空端口（白屏且没有任何错误提示）。
+	running := pid > 0 && daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid)
+	if pid > 0 && !running {
+		daemon.RemovePidFile(pidPath)
+		appendPanelLog(s.HomeDir, "忽略陈旧 pid 文件：pid=%d 已退出或已被无关进程复用", pid)
+	}
+	aSpawn := func() (int, error) {
+		return daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride)
 	}
 	if !running {
-		if _, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride); err != nil {
+		if _, err := aSpawn(); err != nil {
+			appendPanelLog(s.HomeDir, "拉起 daemon 失败: %v", err)
 			return "", err
 		}
 	}
@@ -62,11 +70,26 @@ func EnsureRunning(homeOverride string, portOverride *int, agentHomeOverride str
 		return base, nil
 	}
 	if running {
-		// 探测不到（例如 daemon 正在重启）时回退配置端口，保持旧行为可用。
-		return baseURL(config), nil
+		// pid 文件指向本程序的进程，但候选区间全部探不到：该实例已不可用。
+		// 不静默回退配置端口（原行为）：那等于把窗口导航到一个没有监听的地址，
+		// 用户只看到白屏，既没有报错也没有日志。这里重新拉起一次并再探测。
+		appendPanelLog(s.HomeDir, "pid=%d 在跑但端口 %d..%d 均不可达，重新拉起 daemon", pid, desired, desired+10)
+		newPid, spawnErr := aSpawn()
+		if spawnErr != nil {
+			logPath := filepath.Join(s.LogsDir(), "daemon.log")
+			appendPanelLog(s.HomeDir, "重新拉起 daemon 失败: %v", spawnErr)
+			return "", fmt.Errorf("daemon 未就绪（pid %d 不可连接，重新拉起失败: %v），请查看日志: %s", pid, spawnErr, logPath)
+		}
+		if base := probeDaemonBase(config, s, desired, 50, 200*time.Millisecond); base != "" {
+			appendPanelLog(s.HomeDir, "重新拉起后 daemon 就绪：pid=%d base=%s", newPid, base)
+			return base, nil
+		}
+		appendPanelLog(s.HomeDir, "重新拉起后仍不可达（pid=%d）", newPid)
 	}
 	logPath := filepath.Join(s.LogsDir(), "daemon.log")
-	return "", fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
+	timeoutErr := fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
+	appendPanelLog(s.HomeDir, "daemon 未能就绪: %v", timeoutErr)
+	return "", timeoutErr
 }
 
 // probeDaemonBase 在 desired..desired+10 端口区间探测当前 home 的 daemon。

@@ -35,7 +35,13 @@ func cmdTrayShell(openPanel bool) error {
 		return err
 	}
 	pid, _ := daemon.ReadPid(s.PidPath())
-	remote := pid > 0 && daemon.IsPidAlive(pid)
+	// 陈旧 pid 文件 + PID 复用会让「已在运行」误判成真：必须校验镜像就是本 exe，
+	// 否则托盘不自持 daemon，动作全部打向一个不存在的远端。
+	remote := pid > 0 && daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid)
+	if pid > 0 && !remote {
+		daemon.RemovePidFile(s.PidPath())
+		appendDesktopLog(s.HomeDir, "忽略陈旧 daemon.pid：pid=%d 已退出或已被无关进程复用", pid)
+	}
 
 	var d *daemon.Daemon
 	var gw *gateway.Gateway

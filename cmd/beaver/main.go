@@ -205,11 +205,14 @@ func cmdStart() error {
 		return err
 	}
 	pidPath := s.PidPath()
-	if pid, _ := daemon.ReadPid(pidPath); pid > 0 && daemon.IsPidAlive(pid) {
+	pid, _ := daemon.ReadPid(pidPath)
+	// pid 文件可能残留且 pid 可能已被复用：只认镜像为本 exe 的进程。
+	if pid > 0 && daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid) {
 		config, _ := s.Load()
 		fmt.Printf("daemon 已在运行 (pid %d)：http://127.0.0.1:%d\n", pid, config.Settings.Port)
 		return nil
 	}
+	daemon.RemovePidFile(pidPath) // 陈旧 pid 文件（指向无关进程）不能留给后续判断
 	childPid, err := daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride)
 	if err != nil {
 		return err
@@ -252,7 +255,8 @@ func cmdStop() error {
 	s := newStore()
 	pidPath := s.PidPath()
 	pid, _ := daemon.ReadPid(pidPath)
-	if pid <= 0 || !daemon.IsPidAlive(pid) {
+	// 陈旧 pid / 被复用的 pid 绝不能 taskkill：可能打到无关进程。
+	if pid <= 0 || !daemon.IsPidAlive(pid) || !daemon.IsSameExecutable(pid) {
 		daemon.RemovePidFile(pidPath)
 		fmt.Println("daemon 未在运行")
 		return nil

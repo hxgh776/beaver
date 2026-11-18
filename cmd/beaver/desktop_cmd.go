@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/hxgh776/beaver/internal/daemon"
 	"github.com/hxgh776/beaver/internal/desktop"
@@ -25,8 +26,12 @@ func trayPidPath() string {
 }
 
 // trayAlive 检测已有托盘壳在跑；双击第二次只开窗口，不重复常驻。
+// pid 文件可能残留，且该 pid 可能已被系统复用给无关进程，因此还要校验
+// 进程镜像就是本 exe——否则会把「陈旧 pid」误判成托盘仍在，跳过拉起 daemon，
+// 窗口导航到无监听的端口（白屏且无任何错误）。
 func trayAlive() bool {
-	data, err := os.ReadFile(trayPidPath())
+	s := store.NewStore(homeOverride)
+	data, err := os.ReadFile(filepath.Join(s.HomeDir, "tray.pid"))
 	if err != nil {
 		return false
 	}
@@ -34,7 +39,29 @@ func trayAlive() bool {
 	if err != nil || pid <= 0 {
 		return false
 	}
-	return daemon.IsPidAlive(pid)
+	if pid == os.Getpid() {
+		return false
+	}
+	if daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid) {
+		return true
+	}
+	appendDesktopLog(s.HomeDir, "忽略陈旧 tray.pid：pid=%d 已退出或已被无关进程复用", pid)
+	return false
+}
+
+// appendDesktopLog 把托盘 / 面板启动链路的诊断写进 <home>/logs/panel.log。
+// 双击路径没有控制台，静默失败只能靠这份日志定位。
+func appendDesktopLog(homeDir, format string, args ...any) {
+	dir := filepath.Join(homeDir, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "panel.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
 }
 
 func trimSpaceBytes(b []byte) []byte {
