@@ -14,3 +14,6 @@ awesome-design-md/
 
 # 本地会话文件
 .zcode/
+
+# 发布产物（release/<version>/ 下的 exe/zip 只作附件交付，不入库）
+release/
