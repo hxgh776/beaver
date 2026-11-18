@@ -162,6 +162,9 @@ func (s *SkillLibrarySink) syncSkillFiles(ctx context.Context, cli *CLI, skillID
 		if rf.Path == "SKILL.md" || rf.Path == "" {
 			continue
 		}
+		if hiddenSkillPath(rf.Path) {
+			continue // 隐藏文件不参与投影（SSOT 收集同样跳过），删除会破坏远端运行态
+		}
 		if local[rf.Path] {
 			continue
 		}
@@ -173,6 +176,18 @@ func (s *SkillLibrarySink) syncSkillFiles(ctx context.Context, cli *CLI, skillID
 		}
 	}
 	return nil
+}
+
+// hiddenSkillPath 任一路径段以 "." 开头（隐藏文件/隐藏目录）。
+// 与 listSkillDirFiles 的收集口径对称：隐藏内容不推送，也不在收敛时删除——
+// 远端运行时生成的状态文件（如 .actor-id）被删会破坏技能。
+func hiddenSkillPath(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // parseImportResult 解析 skill create/import 的输出（容忍进度前缀）。

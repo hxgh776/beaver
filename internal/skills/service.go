@@ -42,7 +42,7 @@ type ServiceOptions struct {
 	SaveConfig func() error
 	// AgentRoot agent 主目录（测试传沙箱根；空 = 用户主目录）
 	AgentRoot string
-// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
+	// FetchZip 覆盖下载实现（测试注入内存 ZIP；nil = 真实网络下载）
 	FetchZip func(ctx context.Context, url string) ([]byte, error)
 	// SkillsShBase 覆盖 skills.sh 搜索 API 基地址（测试桩注入；空 = 真实地址）
 	SkillsShBase string

@@ -110,14 +110,12 @@ func (a *MulticaAdapter) Apply(file string, writes []FragmentWrite, options Appl
 
 	// —— 规划（本地纯计算，DryRun 到此为止） —— //
 	ops := []mcpOp{}
-	managed := map[string]bool{}
 	managedKeys := map[string]bool{}
 	for _, w := range writes {
 		managedKeys[w.Key] = true
 		if w.Entry == nil {
 			// 删除意图：远端是否存在要等列表回来才知道
 			ops = append(ops, mcpOp{key: w.Key, action: "remove"})
-			managed[w.Key] = true
 			continue
 		}
 		config, err := entryConfigJSON(w.Entry)
@@ -130,10 +128,8 @@ func (a *MulticaAdapter) Apply(file string, writes []FragmentWrite, options Appl
 		case prev[w.Key] == hash:
 			// 上次推送内容一致 → 计划为 no-op；远端是否真在（被手动删了）按列表修正
 			op.action = "none"
-			managed[w.Key] = true
 		default:
 			op.action = "add" // 列表后若已存在改判 update
-			managed[w.Key] = true
 		}
 		ops = append(ops, op)
 	}

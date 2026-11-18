@@ -150,6 +150,39 @@ func TestSkillLibrarySinkRemoveMissingIsIdempotent(t *testing.T) {
 	assertNoCall(t, log, "skill", "delete")
 }
 
+func TestSkillLibrarySinkPushKeepsRemoteHiddenFiles(t *testing.T) {
+	sink, logPath := sinkWithFakeCLI(t)
+	t.Setenv(multicafake.EnvFiles, `[{"id":"f-1","path":"SKILL.md"},{"id":"f-9","path":".actor-id"},{"id":"f-10","path":"agents/.cache/x"}]`)
+	dir := t.TempDir()
+	writeSkillDir(t, dir, map[string]string{"SKILL.md": "正文"})
+	row := store.InstalledSkill{ID: "skill-1", Directory: "demo-skill"}
+
+	if err := sink.Push(context.Background(), row, dir); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	log, _ := fakeLog(t, logPath)
+	// 隐藏文件不参与投影：既不 upsert，也不在收敛时删除（远端运行态文件）
+	assertNoCall(t, log, "skill", "files", "delete")
+	assertNoCall(t, log, "skill", "files", "upsert", "--path", ".actor-id")
+	assertNoCall(t, log, "skill", "files", "upsert", "--path", "agents/.cache/x")
+}
+
+func TestHiddenSkillPath(t *testing.T) {
+	cases := map[string]bool{
+		"SKILL.md":            false,
+		"agents/openai.yaml":  false,
+		".actor-id":           true,
+		"agents/.cache/x":     true,
+		"":                    false,
+		"scripts/.hidden.txt": true,
+	}
+	for p, want := range cases {
+		if got := hiddenSkillPath(p); got != want {
+			t.Errorf("hiddenSkillPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
 func TestSkillLibrarySinkRemoveHitsByName(t *testing.T) {
 	sink, logPath := sinkWithFakeCLI(t)
 	row := store.InstalledSkill{ID: "skill-1", Directory: "browser-use"}
