@@ -1,6 +1,18 @@
 // Package version 单一版本注入点（ldflags -X）。
 package version
 
-var value = "0.1.0"
+var (
+	value  = "0.1.0"
+	commit = ""
+)
 
-func String() string { return value }
+// String 返回版本号；构建时注入了 commit 则一并给出（交付物血脉可核对）。
+func String() string {
+	if commit == "" || commit == "unknown" {
+		return value
+	}
+	return value + " (" + commit + ")"
+}
+
+// Commit 返回构建时注入的 commit（未注入时为空）。
+func Commit() string { return commit }

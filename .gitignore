@@ -1,5 +1,5 @@
 .worktrees/
-# Web 面板已下线（VENU-24）：node_modules/dist 仅用于隐藏旧工作区残留目录，不再参与构建
+# 前端构建链：node_modules 与 packages/web/dist 不入库，产物提交在 internal/webui/dist
 node_modules/
 dist/
 coverage/
@@ -14,3 +14,6 @@ awesome-design-md/
 
 # 本地会话文件
 .zcode/
+
+# 发布产物（release/<version>/ 下的 exe/zip 只作附件交付，不入库）
+release/

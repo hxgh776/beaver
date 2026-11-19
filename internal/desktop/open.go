@@ -1,0 +1,307 @@
+// Package desktop 桌面壳：面板窗口打开链与 daemon 就绪保障。
+// 对应 docs/desktop-plan.md §4 M2 决策：
+//   - Windows 优先原生 WebView2 壳（panel_windows.go，窗口由 beaver.exe 自建，
+//     不依赖浏览器进程）；Runtime 缺失或非 Windows 时回退下面的浏览器链路：
+//   - 窗口优先 Edge --app（无地址栏独立窗口，观感同原生）→ Chrome --app → 默认浏览器兜底；
+//   - Windows 经 ShellExecute 语义（cmd /c start）启动，不直接 spawn（不解析 App Paths）；
+//   - 加 --profile-directory=Default：多 profile 用户否则被 Edge 选择器卡住；
+//   - open 语义 = 确保 daemon 在跑（未跑则拉起并等待就绪）再开窗；
+//   - Firefox 无 --app，自然落入默认浏览器兜底。
+package desktop
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/hxgh776/beaver/internal/autostart"
+	"github.com/hxgh776/beaver/internal/daemon"
+	"github.com/hxgh776/beaver/internal/store"
+)
+
+// EnsureRunning 确保 daemon 在跑：未跑则分离式拉起并等待 API 就绪。
+// portOverride / agentHomeOverride 原样传给子进程，避免桌面入口丢失
+// `--port` / `--agent-home` 重定向（VENU-16 复审修复）。
+// 返回 daemon 实际可达的基地址。
+func EnsureRunning(homeOverride string, portOverride *int, agentHomeOverride string) (string, error) {
+	s := store.NewStore(homeOverride)
+	config, err := s.Load()
+	if err != nil {
+		return "", err
+	}
+	desired := config.Settings.Port
+	if portOverride != nil {
+		desired = *portOverride
+	}
+	pidPath := s.PidPath()
+	pid, _ := daemon.ReadPid(pidPath)
+	// 陈旧 pid 文件 + PID 复用：只按 pid 判活会把无关进程认成 daemon，
+	// 从而跳过拉起，最后导航到空端口（白屏且没有任何错误提示）。
+	running := pid > 0 && daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid)
+	if pid > 0 && !running {
+		daemon.RemovePidFile(pidPath)
+		appendPanelLog(s.HomeDir, "忽略陈旧 pid 文件：pid=%d 已退出或已被无关进程复用", pid)
+	}
+	aSpawn := func() (int, error) {
+		return daemon.SpawnDetached(homeOverride, portOverride, agentHomeOverride)
+	}
+	if !running {
+		if _, err := aSpawn(); err != nil {
+			appendPanelLog(s.HomeDir, "拉起 daemon 失败: %v", err)
+			return "", err
+		}
+	}
+	// 显式端口不持久化、端口冲突还会向后漂移，因此不论 daemon 是否已在跑，
+	// 都按候选区间探测实际监听端口（VENU-27：第二次双击不再连到配置里的旧端口）。
+	// 已在跑时探测轮次少，未拉起时给足 50×200ms 的启动窗口。
+	rounds, gap := 50, 200*time.Millisecond
+	if running {
+		rounds, gap = 3, 100*time.Millisecond
+	}
+	if base := probeDaemonBase(config, s, desired, rounds, gap); base != "" {
+		return base, nil
+	}
+	if running {
+		// pid 文件指向本程序的进程，但候选区间全部探不到：该实例已不可用。
+		// 不静默回退配置端口（原行为）：那等于把窗口导航到一个没有监听的地址，
+		// 用户只看到白屏，既没有报错也没有日志。这里重新拉起一次并再探测。
+		appendPanelLog(s.HomeDir, "pid=%d 在跑但端口 %d..%d 均不可达，重新拉起 daemon", pid, desired, desired+10)
+		newPid, spawnErr := aSpawn()
+		if spawnErr != nil {
+			logPath := filepath.Join(s.LogsDir(), "daemon.log")
+			appendPanelLog(s.HomeDir, "重新拉起 daemon 失败: %v", spawnErr)
+			return "", fmt.Errorf("daemon 未就绪（pid %d 不可连接，重新拉起失败: %v），请查看日志: %s", pid, spawnErr, logPath)
+		}
+		if base := probeDaemonBase(config, s, desired, 50, 200*time.Millisecond); base != "" {
+			appendPanelLog(s.HomeDir, "重新拉起后 daemon 就绪：pid=%d base=%s", newPid, base)
+			return base, nil
+		}
+		appendPanelLog(s.HomeDir, "重新拉起后仍不可达（pid=%d）", newPid)
+	}
+	logPath := filepath.Join(s.LogsDir(), "daemon.log")
+	timeoutErr := fmt.Errorf("daemon 启动超时，请查看日志: %s", logPath)
+	appendPanelLog(s.HomeDir, "daemon 未能就绪: %v", timeoutErr)
+	return "", timeoutErr
+}
+
+// probeDaemonBase 在 desired..desired+10 端口区间探测当前 home 的 daemon。
+// 必须校验 /api/status 的 homeDir：同一端口可能被另一份 beaver（另一个数据目录）
+// 或用户真实实例占用，误连会打开别人的面板。返回空串表示未探测到。
+func probeDaemonBase(config *store.Config, s *store.Store, desired, rounds int, gap time.Duration) string {
+	client := &http.Client{Timeout: 1 * time.Second}
+	wantHome := normalizeHome(s.HomeDir)
+	for i := 0; i < rounds; i++ {
+		for offset := 0; offset <= 10; offset++ {
+			base := fmt.Sprintf("http://127.0.0.1:%d", desired+offset)
+			req, _ := http.NewRequest("GET", base+"/api/status", nil)
+			req.Header.Set("authorization", "Bearer "+config.Settings.Token)
+			res, err := client.Do(req)
+			if err != nil {
+				continue
+			}
+			var status struct {
+				HomeDir string `json:"homeDir"`
+			}
+			_ = json.NewDecoder(io.LimitReader(res.Body, 1<<16)).Decode(&status)
+			_ = res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				continue
+			}
+			if status.HomeDir != "" && normalizeHome(status.HomeDir) != wantHome {
+				continue
+			}
+			return base
+		}
+		if i < rounds-1 {
+			time.Sleep(gap)
+		}
+	}
+	return ""
+}
+
+func normalizeHome(p string) string {
+	if p == "" {
+		return ""
+	}
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = strings.TrimSuffix(p, "/")
+	return strings.ToLower(p)
+}
+
+func baseURL(config *store.Config) string {
+	return fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
+}
+
+// OpenPanel 确保 daemon 在跑后，以最高保真形态打开面板窗口。
+// homeOverride 为空 = 默认数据目录。Windows 上由原生 WebView2 壳承载。
+func OpenPanel(homeOverride string, portOverride *int, agentHomeOverride string) error {
+	base, err := EnsureRunning(homeOverride, portOverride, agentHomeOverride)
+	if err != nil {
+		return err
+	}
+	return LaunchPanel(homeOverride, portOverride, agentHomeOverride, base)
+}
+
+// OpenAppWindow 按平台最优链打开独立应用窗口（Edge --app → Chrome --app → 默认浏览器）。
+func OpenAppWindow(base string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return openWindows(base)
+	case "darwin":
+		return openMacos(base)
+	default:
+		return openLinux(base)
+	}
+}
+
+// OpenPath 用系统文件管理器打开目录/文件（设置页「打开数据目录」）。
+func OpenPath(path string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("explorer", path).Start()
+	case "darwin":
+		return exec.Command("open", path).Start()
+	default:
+		return exec.Command("xdg-open", path).Start()
+	}
+}
+
+// —— Windows：App Paths 注册表 / 已知安装路径探测 + cmd start 启动（ShellExecute 语义） ——//
+
+func openWindows(base string) error {
+	for _, name := range []string{"msedge.exe", "chrome.exe"} {
+		exe := browserExe(name)
+		if exe == "" {
+			continue
+		}
+		// 每个开关必须是独立参数：拼成一个字符串会被浏览器当成单个非法开关，
+		// --app 窗口退化成普通标签页甚至打不开（VENU-16 复审修复）。
+		c := exec.Command("cmd", "/c", "start", "", exe, "--app="+base, "--profile-directory=Default")
+		autostart.HideWindow(c)
+		if err := c.Start(); err == nil {
+			go func() { _ = c.Wait() }()
+			return nil
+		}
+	}
+	// Edge 在 Win10/11 必在——到这里说明环境异常，兜底默认浏览器
+	return openDefault(base)
+}
+
+// browserExe 先查 App Paths 注册表，再退回常见安装目录（Edge 必在，Chrome per-user 很常见）。
+func browserExe(name string) string {
+	if exe := appPathsExe(name); exe != "" {
+		return exe
+	}
+	return knownInstallPath(name)
+}
+
+func knownInstallPath(name string) string {
+	dirs := []string{}
+	switch name {
+	case "msedge.exe":
+		for _, env := range []string{"ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"} {
+			if root := os.Getenv(env); root != "" {
+				dirs = append(dirs, filepath.Join(root, "Microsoft", "Edge", "Application"))
+			}
+		}
+	case "chrome.exe":
+		for _, env := range []string{"LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"} {
+			if root := os.Getenv(env); root != "" {
+				dirs = append(dirs, filepath.Join(root, "Google", "Chrome", "Application"))
+			}
+		}
+	}
+	for _, dir := range dirs {
+		exe := filepath.Join(dir, name)
+		if _, err := os.Stat(exe); err == nil {
+			return exe
+		}
+	}
+	return ""
+}
+
+// appPathsExe 查 App Paths 注册表（HKLM + HKCU，Chrome per-user 安装在 %LOCALAPPDATA% 很常见）。
+func appPathsExe(name string) string {
+	for _, root := range []string{`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`, `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`} {
+		out, err := exec.Command("reg", "query", root+name, "/ve").CombinedOutput()
+		if err != nil {
+			continue
+		}
+		if exe := parseAppPathOutput(string(out)); exe != "" {
+			return exe
+		}
+	}
+	return ""
+}
+
+// parseAppPathOutput 从 reg query 输出中取 REG_SZ 后的可执行文件路径。
+// 注意：reg 输出带缩进且 "(默认)" 可能被本地代码页转成乱码，因此不能依赖行首空格判断。
+func parseAppPathOutput(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		idx := strings.Index(line, "REG_SZ")
+		if idx < 0 {
+			continue
+		}
+		exe := strings.TrimSpace(line[idx+len("REG_SZ"):])
+		if exe == "" {
+			continue
+		}
+		if _, err := os.Stat(exe); err == nil {
+			return exe
+		}
+	}
+	return ""
+}
+
+func openDefault(url string) error {
+	c := exec.Command("cmd", "/c", "start", "", url)
+	autostart.HideWindow(c)
+	return c.Start()
+}
+
+// —— macOS：/Applications 下探测 Chromium 变体；Firefox 无 --app 自然兜底 ——//
+
+func openMacos(base string) error {
+	candidates := []string{
+		"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"/Applications/Chromium.app/Contents/MacOS/Chromium",
+		"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+	}
+	target := "--app=" + base
+	for _, exe := range candidates {
+		if _, err := os.Stat(exe); err != nil {
+			continue
+		}
+		if err := exec.Command(exe, target, "--profile-directory=Default").Start(); err == nil {
+			return nil
+		}
+	}
+	return exec.Command("open", base).Start()
+}
+
+// —— Linux：PATH 下的 chromium 变体 ——//
+
+func openLinux(base string) error {
+	candidates := []string{"microsoft-edge", "google-chrome", "chromium", "chromium-browser", "brave"}
+	target := "--app=" + base
+	for _, name := range candidates {
+		if _, err := exec.LookPath(name); err != nil {
+			continue
+		}
+		if err := exec.Command(name, target, "--profile-directory=Default").Start(); err == nil {
+			return nil
+		}
+	}
+	return exec.Command("xdg-open", base).Start()
+}
+
+var _ = context.Background

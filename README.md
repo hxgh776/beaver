@@ -27,11 +27,13 @@
 
 ## ✨ 界面一览
 
-单文件 exe 直接运行就是**终端面板（TUI）**，八个页签：概览 / MCP 管理 / MCP 发现 / Agent 分发 / 聚合网关 / 调用日志 / Skill 管理 / 设置。全键盘操作：`F1–F8` 切页、`Ctrl+P` 聚焦侧栏、`Ctrl+Q` 退出。
+单文件 exe **双击即打开桌面面板窗口**（独立应用窗口 + 托盘常驻，观感同 cc-switch / magpie 这类桌面应用），八个页签：概览 / MCP 管理 / MCP 发现 / Agent 分发 / 聚合网关 / 调用日志 / Skill 管理 / 设置。
 
-daemon 未跑时面板进程自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。
+面板前端是 `packages/web`（React + Tailwind），构建产物经 `go:embed` 打进单文件 exe；Windows 上窗口由 beaver.exe 自己创建并嵌入 **WebView2 原生宿主**（系统组件，Win10/11 自带，与 Tauri / Wails 同款），不再拉起 Edge/Chrome 浏览器进程，无地址栏、无标签页、任务栏显示为独立应用。WebView2 Runtime 缺失时自动回退 Edge/Chrome `--app` 链路。托盘菜单含「打开面板」，关闭窗口不等于退出，托盘常驻在后台。
 
-> 浏览器 Web 面板已下线（VENU-24）：交互入口只有 TUI，仓库不再包含 `packages/web` 与 `go:embed` 静态资源。
+daemon 未跑时托盘壳自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。
+
+> 无图形环境（SSH、纯终端、CI）可用 `beaver tui` 进入终端面板，功能面与桌面面板一致。
 
 ## 🤔 为什么需要它
 
@@ -59,29 +61,32 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 到 [Releases](https://github.com/hxgh776/beaver/releases) 下载对应平台的单文件（`beaver-vX.Y.Z-windows-x64.exe.zip` / `linux-x64.tar.gz` / `macos-arm64.tar.gz`），解压后：
 
 ```bash
-beaver            # 直接运行 = 进入终端面板 TUI（daemon 未跑则自动拉起，无需浏览器）
-beaver start      # daemon 后台常驻（REST API + MCP 网关；TUI 可挂远端）
-beaver tray       # 托盘常驻：网关开关 / 立即同步 / 自启开关 / 退出
+beaver            # 双击/直接运行 = 打开桌面面板窗口（托盘常驻；daemon 未跑则自动拉起）
+beaver tui        # 终端面板 TUI（无图形环境时使用，daemon 未跑则自动拉起）
+beaver start      # daemon 后台常驻（REST API + MCP 网关）
+beaver tray       # 只起托盘（不自动开窗口）：网关开关 / 立即同步 / 自启开关 / 退出
+beaver open       # 打开桌面面板窗口（确保 daemon 在跑再开窗）
 ```
 
-> **老用户注意**：TUI 是现在的唯一默认入口——`beaver` 直接运行就是终端面板，不再需要"先起服务再开浏览器"。浏览器 Web 面板已随 VENU-24 下线；`beaver open` 仅保留为兼容占位（提示改用 TUI，不再打开浏览器）。
+> **桌面形态**：`beaver`（无参数）与 `beaver open` 都会确保 daemon 在跑，然后打开**原生 WebView2 窗口**（窗口由 beaver.exe 自建，独立进程承载，不依赖 Edge/Chrome 浏览器进程）；WebView2 Runtime 缺失或非 Windows 平台回退 Edge/Chrome `--app` → 默认浏览器。关闭窗口 ≠ 退出，托盘里可再次打开面板或彻底退出。
 
 > **首次运行提示**：Windows SmartScreen 会拦一道——点「更多信息 → 仍要运行」（v1 不签名，证书后续迭代上）；macOS Gatekeeper 右键打开或 `xattr -cr beaver`。
 
-**5 分钟上手路径**（全程在终端面板内完成）：
+**5 分钟上手路径**（在桌面面板窗口内完成）：
 
 1. **探测**：概览页自动识别本机已安装的 agent；
 2. **导入**：MCP 管理页把各 agent 里现有的 MCP 配置收进注册表（跨 agent 自动按指纹去重）；
 3. **同步**：Agent 分发页勾选要启用的 agent → 一键分发。此后改配置/换密钥/开关工具都只在这一处。
 
-免 Node、免安装、单文件 ~11 MB；数据目录 `~/.beaver`，监听恒为 127.0.0.1。
+免 Node、免安装、单文件 ~13 MB；数据目录 `~/.beaver`，监听恒为 127.0.0.1。
 
 ## 🖥 CLI
 
 ```bash
-beaver（无参数）| tui      # 终端面板 TUI：概览 / MCP 管理 / MCP 发现 / Agent 分发 /
+beaver（无参数）            # 打开桌面面板窗口：概览 / MCP 管理 / MCP 发现 / Agent 分发 /
                           # 聚合网关 / 调用日志 / Skill 管理 / 设置，数据走 daemon REST API
-                          # daemon 未跑 = 面板进程自持有（退出即停）；已跑 = 挂远端（退出保留）
+                          # daemon 未跑 = 托盘壳自持有（退出即停）；已跑 = 挂远端（退出保留）
+beaver tui                # 终端面板 TUI（同样的八页，全键盘 F1–F8 / Ctrl+P / Ctrl+Q）
 beaver start | stop | status
 beaver servers list | servers add --name X --transport stdio --command npx --args ...
 beaver agents             # 探测本机 agent
@@ -90,8 +95,8 @@ beaver sync [--dry-run]   # 分发到各 agent
 beaver gateway status | start | stop
 beaver bridge <url> --token xxx    # stdio 反向桥（供 stdio agent 连远程端点）
 beaver autostart on | off | status # 开机自启（Win: HKCU Run 键 + 隐藏窗口；macOS: LaunchAgent；Linux: systemd user unit）
-beaver tray               # 托盘常驻：网关开关 / 立即同步 / 自启开关 / 退出
-beaver open               # 兼容占位：Web 面板已下线，提示改用 TUI（命令仍在，退出码 0）
+beaver tray               # 只起托盘：打开面板 / 网关开关 / 立即同步 / 自启开关 / 退出
+beaver open               # 打开桌面面板窗口（确保 daemon 在跑再开窗）
 beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 ```
 
@@ -130,13 +135,21 @@ beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 
 ## 🛠 开发
 
-单文件 Go 实现（CLI + daemon + TUI + 托盘），无 Node 构建步骤：
+单文件 Go 实现（CLI + daemon + 桌面面板 + TUI + 托盘），前端源码在 `packages/web`：
 
 ```bash
-go build -o beaver ./cmd/beaver        # 单文件 CLI + daemon + 终端面板 + 托盘
-go test ./...                           # 全量用例（含 TUI 无头渲染与真实 stdio/HTTP 上游网关全链路）
-export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无需）
+pnpm install                             # 仅前端构建需要
+pnpm --filter @beaver/web build          # 构建 React 面板
+node scripts/sync-web-dist.mjs           # 产物同步到 internal/webui/dist（go:embed 消费）
+go build -o beaver ./cmd/beaver          # 单文件 CLI + daemon + 面板窗口 + 终端面板 + 托盘
+go test ./...                            # 全量用例（含 TUI 无头渲染与真实 stdio/HTTP 上游网关全链路）
+export GOPROXY=https://goproxy.cn,direct # 国内代理（CI 无需）
 ```
+
+> `internal/webui/dist` 已提交构建产物：只改 Go 代码时可直接 `go build`，无需 Node。
+> 改了 `packages/web` 才需要跑前两条 pnpm/node 命令重新生成产物。
+
+> Windows 面板壳用 `github.com/jchv/go-webview2`（纯 Go、无 CGO）：WebView2Loader.dll 已内嵌进 exe，运行时从内存加载，不落盘、不需要额外 DLL；依赖系统 WebView2 Runtime（Win10/11 自带，缺失则回退浏览器）。托盘退出会一并关闭面板窗口进程。
 
 > 所有自动化测试通过沙箱目录重定向，**绝不读写真实 agent 配置**。
 > Linux 构建需 `libayatana-appindicator3-dev libgtk-3-dev`（托盘 cgo 后端）；Windows 纯 Go，macOS 需 Xcode 命令行工具。
@@ -147,8 +160,8 @@ export GOPROXY=https://goproxy.cn,direct                 # 国内代理（CI 无
 - [x] ~~Go 单文件桌面版~~（[v0.1.0](https://github.com/hxgh776/beaver/releases/tag/v0.1.0)）
 - [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
-- [x] ~~桌面化交付~~（Go 单文件 exe + 托盘 + 终端面板 TUI；二进制经 go-build workflow 手动产出）
-- [x] ~~TUI 终端面板~~（exe 直接运行进面板；浏览器 Web 面板已下线）
+- [x] ~~桌面化交付~~（Go 单文件 exe + 桌面面板窗口 + 托盘；二进制经 go-build workflow 手动产出）
+- [x] ~~TUI 终端面板~~（`beaver tui`，无图形环境时使用）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密

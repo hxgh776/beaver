@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "servers": [],
+  "bindings": [],
+  "groups": [],
+  "skills": [],
+  "skillTargets": [],
+  "syncState": {},
+  "settings": {
+    "port": 6280,
+    "token": "715c5fe674b8f085b3c1ee6bddc44f04a4af3614a0cda04c",
+    "logLevel": "info",
+    "authRequired": false
+  }
+}
