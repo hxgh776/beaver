@@ -333,9 +333,10 @@ func waitForSkill(t *testing.T, e *e2eEnv, name string) skills.WithStatus {
 }
 
 // pressInstallInPickEnableFor 在「选择分发目标」模态内把焦点 Tab 到「安装」并回车。
+// 模态只列本地目录投影目标（远端型 multica 不参与安装期选择），数量 = SkillAgentDirs。
 func pressInstallInPickEnableFor(e *e2eEnv) {
-	for i := 0; i < len(skills.SkillAgentList); i++ {
-		e.key(tcell.KeyTab, 0) // 8 个复选框逐个后移
+	for i := 0; i < len(skills.SkillAgentDirs); i++ {
+		e.key(tcell.KeyTab, 0) // 逐个复选框后移
 	}
 	e.key(tcell.KeyEnter, 0) // 聚焦到第一个按钮「安装」并激活
 }

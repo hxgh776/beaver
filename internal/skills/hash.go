@@ -25,7 +25,8 @@ var SkillAgentDirs = map[string][]string{
 }
 
 // SkillAgentList 稳定顺序（投影状态遍历序 = TS Object.keys 序）。
-var SkillAgentList = []string{"claude-code", "codex", "gemini-cli", "opencode", "zcode", "cursor", "windsurf", "trae"}
+// multica 在列但不在 SkillAgentDirs——它没有本地 skills 目录，投影走 SkillSink（远端库）。
+var SkillAgentList = []string{"claude-code", "codex", "gemini-cli", "opencode", "zcode", "cursor", "windsurf", "trae", "multica"}
 
 // SkillDirsForAgents 各 agent 的 skills 目录绝对路径（baseDir 缺省为用户主目录）。
 func SkillDirsForAgents(baseDir string) map[string]string {

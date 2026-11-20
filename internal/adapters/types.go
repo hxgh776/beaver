@@ -1,4 +1,5 @@
-// Package adapters 实现 10 个 AI coding agent 的配置适配器（读取/受管写入/归一化）。
+// Package adapters 实现内置 agent 的配置适配器（读取/受管写入/归一化），
+// 含本地文件型与 CLI 外置型（Multica）。
 // 对应 TS 侧 packages/core/src/adapters/*，行为 1:1 对齐。
 package adapters
 
@@ -72,6 +73,18 @@ type ApplyResult struct {
 type NamedEntry struct {
 	Key   string
 	Entry RawServerEntry
+}
+
+// RemoteAgent 远端型适配器标记：配置不经本地文件（经外部 CLI/API 落到远端库）。
+// 同步引擎据此跳过文件备份，并把该 agent 的同步失败隔离在报告里（不拖垮其他 agent）。
+type RemoteAgent interface {
+	IsRemote() bool
+}
+
+// RemoteDetector 远端型适配器的探测接口：不走「候选配置文件存在性」判定，
+// 由适配器自行探测（multica = CLI 可解析）。location 为展示用虚拟路径。
+type RemoteDetector interface {
+	DetectRemote() (detected bool, location string)
 }
 
 // Adapter 是单个 agent 的配置适配器契约。
