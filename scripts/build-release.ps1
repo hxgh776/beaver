@@ -18,7 +18,9 @@ Push-Location $root
 try {
     $commit = (& git rev-parse --short=12 HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw "无法读取 git commit" }
-    $dirty = (& git status --porcelain).Trim()
+    # 干净工作区时 git status 无输出，管道结果是 $null，直接 .Trim() 会在 StrictMode
+    # 之外的 PowerShell 里抛 "不能在空值表达式上调用方法"（VENU-43 复现）。
+    $dirty = ("" + (& git status --porcelain)).Trim()
     if ($dirty) {
         Write-Warning "工作区有未提交改动：产物对应的 commit 不完整，请先提交"
     }
