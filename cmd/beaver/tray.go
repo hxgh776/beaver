@@ -1,9 +1,10 @@
 package main
 
-// beaver tray：托盘常驻壳（docs 已随 Web 面板下线，托盘菜单只保留 daemon 相关动作）。
-// 菜单四项：网关启停 / 立即同步 / 开机自启开关 / 退出。
+// beaver tray：托盘常驻壳（docs/desktop-plan.md §4 M2 的 Go 原生落地）。
+// 菜单五项：打开面板 / 网关启停 / 立即同步 / 开机自启开关 / 退出。
 // 双模式：daemon 未跑 = 自持有（in-process 起 daemon，退出全停）；已跑 = 远端（动作走 HTTP API）。
-// 退出语义 = 停 daemon + 撤托盘；交互面板走 `beaver`（终端面板 TUI），托盘不再打开浏览器窗口。
+// 退出语义 = 停 daemon + 撤托盘；托盘退出 ≠ 关面板窗口。
+// 无参数双击走 cmdDesktop：托盘常驻 + 自动打开面板窗口；`beaver tray` 只起托盘。
 
 import (
 	"bytes"
@@ -23,7 +24,10 @@ import (
 	"github.com/hxgh776/beaver/internal/store"
 )
 
-func cmdTray() error {
+func cmdTray() error { return cmdTrayShell(false) }
+
+// cmdTrayShell 托盘壳。openPanel = 就绪后自动打开面板窗口（无参数双击的桌面路径）。
+func cmdTrayShell(openPanel bool) error {
 	// 远端模式判定：daemon 已在跑则不重复起，动作走 API
 	s := store.NewStore(homeOverride)
 	config, err := s.Load()
@@ -31,12 +35,18 @@ func cmdTray() error {
 		return err
 	}
 	pid, _ := daemon.ReadPid(s.PidPath())
-	remote := pid > 0 && daemon.IsPidAlive(pid)
+	// 陈旧 pid 文件 + PID 复用会让「已在运行」误判成真：必须校验镜像就是本 exe，
+	// 否则托盘不自持 daemon，动作全部打向一个不存在的远端。
+	remote := pid > 0 && daemon.IsPidAlive(pid) && daemon.IsSameExecutable(pid)
+	if pid > 0 && !remote {
+		daemon.RemovePidFile(s.PidPath())
+		appendDesktopLog(s.HomeDir, "忽略陈旧 daemon.pid：pid=%d 已退出或已被无关进程复用", pid)
+	}
 
 	var d *daemon.Daemon
 	var gw *gateway.Gateway
 	if !remote {
-		d = daemon.New(daemon.Options{HomeDir: homeOverride})
+		d = daemon.New(daemon.Options{HomeDir: homeOverride, AgentConfigRoot: agentHomeOverride, Port: portOverride})
 		gw = gateway.New(d)
 		gw.Attach()
 		if err := d.Start(); err != nil {
@@ -47,7 +57,11 @@ func cmdTray() error {
 		}
 	}
 
+	// 自持模式必须用实际绑定端口：config 里的端口可能因 --port 覆盖或冲突漂移而失效。
 	base := fmt.Sprintf("http://127.0.0.1:%d", config.Settings.Port)
+	if d != nil {
+		base = d.BaseURL()
+	}
 	tray := &trayApp{
 		homeOverride: homeOverride,
 		base:         base,
@@ -56,7 +70,14 @@ func cmdTray() error {
 		gw:           gw,
 		ownsDaemon:   !remote,
 	}
-	systray.Run(tray.onReady, func() {
+	// 托盘单实例标记：再次双击时 cmdDesktop 只开窗口，不重复常驻。
+	if err := os.WriteFile(trayPidPath(), []byte(fmt.Sprint(os.Getpid())), 0o644); err != nil {
+		return err
+	}
+	systray.Run(func() { tray.onReady(openPanel) }, func() {
+		_ = os.Remove(trayPidPath())
+		// 托盘退出 = 撤掉整个桌面壳：面板窗口进程一并关闭，不留无主窗口。
+		desktop.ClosePanel()
 		if d != nil {
 			_ = gw.Detach()
 			_ = d.Stop()
@@ -78,10 +99,11 @@ type trayApp struct {
 	mAuto    *systray.MenuItem
 }
 
-func (t *trayApp) onReady() {
+func (t *trayApp) onReady(openPanel bool) {
 	systray.SetIcon(desktop.TrayIconICO())
 	systray.SetTooltip("Beaver（河狸）——本地 Agent 能力总控台\n" + t.base)
 
+	mOpen := systray.AddMenuItem("打开面板", "在独立应用窗口打开管理面板")
 	t.mGateway = systray.AddMenuItemCheckbox("网关", "MCP 网关启停", t.gatewayRunning())
 	mSync := systray.AddMenuItem("立即同步", "把注册表分发到各 agent")
 	t.mAuto = systray.AddMenuItemCheckbox("开机自启", "登录时静默拉起 daemon", autostart.IsInstalled())
@@ -89,9 +111,14 @@ func (t *trayApp) onReady() {
 	mQuit := systray.AddMenuItem("退出", t.quitLabel())
 
 	go t.refreshLoop()
+	if openPanel {
+		go func() { _ = desktop.LaunchPanel(t.homeOverride, portOverride, agentHomeOverride, t.base) }()
+	}
 
 	for {
 		select {
+		case <-mOpen.ClickedCh:
+			go func() { _ = desktop.LaunchPanel(t.homeOverride, portOverride, agentHomeOverride, t.base) }()
 		case <-t.mGateway.ClickedCh:
 			t.toggleGateway()
 		case <-mSync.ClickedCh:
