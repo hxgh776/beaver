@@ -17,6 +17,7 @@ import (
 
 	"github.com/hxgh776/beaver/internal/adapters"
 	"github.com/hxgh776/beaver/internal/environment"
+	"github.com/hxgh776/beaver/internal/multica"
 	"github.com/hxgh776/beaver/internal/registry"
 	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
@@ -148,11 +149,16 @@ func New(opts Options) *Daemon {
 	}
 	d.syncOpts.BackupsDir = st.BackupsDir()
 	d.syncOpts.HomeDir = st.HomeDir
-	if agentRoot != "" {
-		d.syncOpts.Agents = syncengine.DefaultAgentRefs(agentRoot)
-	} else if opts.HomeDir != "" || os.Getenv("AGENT_CONTROL_HOME") != "" || os.Getenv("MCP_MANAGER_HOME") != "" {
+	// 始终构建引用表：multica 适配器需要注入动态连接设置源（读取运行中的 settings.multica），
+	// 现建现用的引用表会丢失注入。agentRoot 为空 = 真实用户主目录（语义不变）。
+	d.syncOpts.Agents = syncengine.DefaultAgentRefs(agentRoot)
+	if ma, ok := d.syncOpts.Agents[store.AgentMultica].Adapter.(*adapters.MulticaAdapter); ok {
+		ma.SetSource(d.multicaSettings)
+	}
+	if agentRoot == "" && (opts.HomeDir != "" || os.Getenv("AGENT_CONTROL_HOME") != "" || os.Getenv("MCP_MANAGER_HOME") != "") {
 		logger.Warn("数据目录已重定向但 agent 配置仍指向真实用户主目录——测试场景请传 agentConfigRoot")
 	}
+	// multica 的技能投影通道：推进 workspace Skill 库（远端型 agent，无本地目录）
 	d.Skills = skills.NewService(skills.ServiceOptions{
 		HomeDir:      st.HomeDir,
 		GetConfig:    func() *store.Config { return d.Config },
@@ -160,6 +166,9 @@ func New(opts Options) *Daemon {
 		AgentRoot:    agentRoot,
 		SkillsShBase: opts.SkillsShBase,
 		FetchZip:     opts.SkillsFetchZip,
+		Sinks: map[string]skills.SkillSink{
+			store.AgentMultica: &multica.SkillLibrarySink{CLI: d.multicaCLIFunc},
+		},
 	})
 	return d
 }
@@ -266,7 +275,11 @@ func (d *Daemon) AgentDetections(force bool) ([]registry.AgentDetection, error) 
 	d.agentMu.Lock()
 	defer d.agentMu.Unlock()
 	if d.agentCache == nil || force {
-		d.agentCache = registry.DetectAgents(syncengine.DefaultAgentRefs(d.agentRoot))
+		refs := d.syncOpts.Agents
+		if refs == nil {
+			refs = syncengine.DefaultAgentRefs(d.agentRoot)
+		}
+		d.agentCache = registry.DetectAgents(refs)
 	}
 	return d.agentCache, nil
 }
@@ -277,13 +290,19 @@ func (d *Daemon) UptimeSec() int { return int(time.Since(d.startedAt).Seconds())
 // DetectEnvironment S5 环境检测。
 func (d *Daemon) DetectEnvironment() []environment.RuntimeTool { return environment.Detect() }
 
-// agentTargetFile 某 agent 的当前配置写入路径（候选中第一个存在者，否则首候选）。
-func (d *Daemon) agentTargetFile(agentType string) (string, error) {
+// agentRef 某 agent 的引用（同步/探测共用的表；nil 时现建）。
+func (d *Daemon) agentRef(agentType string) (registry.AgentRef, bool) {
 	refs := d.syncOpts.Agents
 	if refs == nil {
 		refs = syncengine.DefaultAgentRefs(d.agentRoot)
 	}
 	ref, ok := refs[agentType]
+	return ref, ok
+}
+
+// agentTargetFile 某 agent 的当前配置写入路径（候选中第一个存在者，否则首候选）。
+func (d *Daemon) agentTargetFile(agentType string) (string, error) {
+	ref, ok := d.agentRef(agentType)
 	if !ok {
 		return "", fmt.Errorf("未知 agent: %s", agentType)
 	}

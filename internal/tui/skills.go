@@ -217,13 +217,21 @@ func (p *skillsPage) openSearch(a *App) {
 // 调用方可能在事件循环内（搜索/集合安装按钮），也可能在 goroutine 内（ZIP 安装）。
 func (p *skillsPage) pickEnableFor(a *App, onDone func([]string)) {
 	a.post(func() {
-		form := tview.NewForm()
+		// 只列本地目录投影目标：远端型（multica workspace 库）在安装期不勾选，
+		// 避免 CLI 未就绪/未登录阻塞本地安装；安装后可在分发开关里单独启用。
+		targets := make([]string, 0, len(skills.SkillAgentList))
 		for _, at := range skills.SkillAgentList {
+			if _, local := skills.SkillAgentDirs[at]; local {
+				targets = append(targets, at)
+			}
+		}
+		form := tview.NewForm()
+		for _, at := range targets {
 			form.AddCheckbox(at, false, nil)
 		}
 		form.AddButton("安装", func() {
 			var enableFor []string
-			for i, at := range skills.SkillAgentList {
+			for i, at := range targets {
 				if form.GetFormItem(i).(*tview.Checkbox).IsChecked() {
 					enableFor = append(enableFor, at)
 				}
@@ -234,7 +242,7 @@ func (p *skillsPage) pickEnableFor(a *App, onDone func([]string)) {
 		})
 		form.AddButton("取消", func() { a.closeModal() })
 		form.SetBorder(true).SetTitle(" 选择分发目标 ").SetTitleAlign(tview.AlignLeft)
-		a.showModal(centered(form, 60, len(skills.SkillAgentList)+5))
+		a.showModal(centered(form, 60, len(targets)+5))
 	})
 }
 
@@ -388,6 +396,9 @@ func (p *skillsPage) uninstall(a *App, sk *skills.WithStatus) {
 		msg := "已卸载"
 		if len(res.Preserved) > 0 {
 			msg += "（保留用户改动: " + strings.Join(res.Preserved, ", ") + "）"
+		}
+		if len(res.Warnings) > 0 {
+			msg += "；远端警告: " + strings.Join(res.Warnings, "；")
 		}
 		a.info(msg)
 		p.load(a)

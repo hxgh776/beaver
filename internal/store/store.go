@@ -39,14 +39,17 @@ const (
 	AgentGeminiCLI     = "gemini-cli"
 	AgentZCode         = "zcode"
 	AgentWorkBuddy     = "workbuddy"
+	AgentMultica       = "multica"
 	GatewayKey         = "beaver-gateway"
 	LegacyGatewayKey   = "agent-control-gateway"
 )
 
 // AgentTypes 与 TS AGENT_TYPES 顺序一致（写入顺序 = 稳定性依赖）。
+// multica 是 CLI 外置型 agent（配置落在 Multica workspace 库，不写本地文件），排在最后。
 var AgentTypes = []string{
 	AgentClaudeCode, AgentCodex, AgentCursor, AgentTrae, AgentOpencode,
 	AgentClaudeDesktop, AgentWindsurf, AgentGeminiCLI, AgentZCode, AgentWorkBuddy,
+	AgentMultica,
 }
 
 func IsValidAgentType(t string) bool {
@@ -140,6 +143,19 @@ type Settings struct {
 	RegistryBaseURL *string `json:"registryBaseUrl,omitempty"`
 	// HasOnboarded 首启向导标记（M4）；缺失 = 未引导（存量用户以 servers/bindings 非空视作已引导）
 	HasOnboarded *bool `json:"hasOnboarded,omitempty"`
+	// Multica Multica 外部后端的连接设置（VENU-15）。nil = 从未配置。
+	// 身份不在此存（token 仍归 multica CLI profile），只存如何调用 CLI。
+	Multica *MulticaSettings `json:"multica,omitempty"`
+}
+
+// MulticaSettings 面板访问 Multica workspace 的调用配置：
+// binary = CLI 路径（空 = PATH 解析），profile = CLI --profile，serverUrl = --server-url，
+// workspaceId = 当前目标 workspace（--workspace-id）。不含任何凭据。
+type MulticaSettings struct {
+	Binary      string `json:"binary,omitempty"`
+	Profile     string `json:"profile,omitempty"`
+	ServerURL   string `json:"serverUrl,omitempty"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
 }
 
 type Config struct {
@@ -150,7 +166,11 @@ type Config struct {
 	Skills       []InstalledSkill          `json:"skills"`
 	SkillTargets []SkillTarget             `json:"skillTargets"`
 	SyncState    map[string]AgentSyncState `json:"syncState"`
-	Settings     Settings                  `json:"settings"`
+	// SkillPushState 推送到外部后端技能库（远端型 agent，如 multica）的内容指纹：
+	// agentType → skillID → 推送时的 SSOT 目录哈希。用于投影状态展示（远端内容不可读，
+	// 以"上次推送的本地内容"为基准比对 SSOT 漂移）。
+	SkillPushState map[string]map[string]string `json:"skillPushState,omitempty"`
+	Settings       Settings                     `json:"settings"`
 }
 
 func DefaultConfig() *Config {

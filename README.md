@@ -15,7 +15,7 @@
 
 > **Every agent's gear. One dam.** —— 河狸修坝：把所有水流收进同一座坝，每道闸门独立启闭，坝上看得见每一笔流量。配置一次，全局生效，很河狸。
 
-支持 **10 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI · ZCode · WorkBuddy
+支持 **11 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI · ZCode · WorkBuddy，以及 **Multica 平台**（经其 CLI 收敛 MCP 与 Skill 库）
 
 ## 🧭 它管什么、不管什么
 
@@ -31,7 +31,7 @@
 
 面板前端是 `packages/web`（React + Tailwind），构建产物经 `go:embed` 打进单文件 exe；Windows 上窗口由 beaver.exe 自己创建并嵌入 **WebView2 原生宿主**（系统组件，Win10/11 自带，与 Tauri / Wails 同款），不再拉起 Edge/Chrome 浏览器进程，无地址栏、无标签页、任务栏显示为独立应用。WebView2 Runtime 缺失时自动回退 Edge/Chrome `--app` 链路。托盘菜单含「打开面板」，关闭窗口不等于退出，托盘常驻在后台。
 
-daemon 未跑时托盘壳自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。
+daemon 未跑时托盘壳自持有（退出即停），已跑则挂远端（退出后 daemon 保留）；面板数据全部走本地 daemon 的 REST API，与 CLI 同源。Multica 的 CLI 诊断、workspace 切换与远端库现状在「Agent 分发」页的「Multica 连接」按钮里。
 
 > 无图形环境（SSH、纯终端、CI）可用 `beaver tui` 进入终端面板，功能面与桌面面板一致。
 
@@ -114,8 +114,9 @@ beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 | Gemini CLI | `~/.gemini/settings.json` | ✅ 原生 |
 | ZCode | `~/.zcode/cli/config.json`（`mcp.servers`） | ✅ 原生 |
 | WorkBuddy | `~/.workbuddy/mcp.json`（`type: streamableHttp`） | ✅ 原生 |
+| Multica | 无本地文件：`multica` CLI 的 workspace MCP 库 | ✅ 原生（库条目即 mcpServers 形状） |
 
-> 写入保真承诺：只动 MCP 配置键，写入前自动备份、原子写入、写后校验；你在配置里的手工修改会被检测并交给你决定，绝不静默覆盖。
+> 写入保真承诺：只动 MCP 配置键，写入前自动备份、原子写入、写后校验；你在配置里的手工修改会被检测并交给你决定，绝不静默覆盖。Multica 是 CLI 外置型（配置在 workspace 库，不落本地文件），登录态复用本机 `multica` CLI，beaver 不持有 token。
 
 ## 🧰 核心能力
 
@@ -125,7 +126,8 @@ beaver --home <dir> ...   # 指定数据目录（缺省 ~/.beaver）
 - **协议桥接**：stdio ↔ streamable HTTP / SSE 双向兼容，老协议 server 和老协议 agent 都能接入；
 - **服务管理**：进程启停/重启、stderr 日志、调用日志（含耗时与错误）、工具调试台（不经 agent 直接调用）；
 - **Skill 管理**：skills.sh 搜索 + GitHub/本地 ZIP 安装（128MiB/512MiB/30000 条目供应链预算、zip-slip 双防线、symlink 拒收），SSOT + 每-agent 启停矩阵（内容哈希所有权守卫），更新检查与卸载备份（保留 20 份）；
-- **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
+- **Multica 平台接入**：multica 作为 CLI 外置型 agent 与本地 agent 并列——绑定的 MCP 条目收敛进 workspace MCP 库，启用的 Skill 推进 workspace Skill 库（create/update + 附属文件对齐）；CLI 缺失/未登录/无权限等远端失败隔离在报告里，不拖垮其他 agent。库里的条目在 Multica 内部归哪些智能体使用，完全由 Multica 自己决定，beaver 不碰；
+- **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置；Multica 的凭据只经内存与一次性临时文件传给 CLI，绝不写进 beaver 配置。
 
 
 ## 📚 文档
@@ -162,6 +164,7 @@ export GOPROXY=https://goproxy.cn,direct # 国内代理（CI 无需）
 - [x] ~~更名 Beaver~~（含 magpie 互补定位：magpie 管模型，Beaver 管装备）
 - [x] ~~桌面化交付~~（Go 单文件 exe + 桌面面板窗口 + 托盘；二进制经 go-build workflow 手动产出）
 - [x] ~~TUI 终端面板~~（`beaver tui`，无图形环境时使用）
+- [x] ~~Multica 平台接入~~（第 11 个 agent：MCP 库与 Skill 库经 multica CLI 收敛；不管平台内智能体的 skill 分配）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密

@@ -14,9 +14,11 @@ import (
 )
 
 // groupAgentTypes 与 daemon parseGroupInput 同款（zcode/workbuddy 不在分组可选列表）。
+// multica 可关联分组：分组勾选的 server 经分发管线收敛进 workspace MCP 库。
 var groupAgentTypes = []string{
 	store.AgentClaudeCode, store.AgentCodex, store.AgentCursor, store.AgentTrae,
 	store.AgentOpencode, store.AgentClaudeDesktop, store.AgentWindsurf, store.AgentGeminiCLI,
+	store.AgentMultica,
 }
 
 type syncPage struct {
@@ -78,7 +80,9 @@ func newSyncPage(a *App) *pageDef {
 	syncToolbar := tview.NewFlex()
 	dryBtn := toolbarButton("预演（dry-run）", func() { go p.runSync(a, true) })
 	syncBtn := toolbarButton("立即同步", func() { go p.runSync(a, false) })
-	syncToolbar.AddItem(dryBtn, 20, 0, true).AddItem(syncBtn, 14, 0, false).AddItem(nil, 0, 1, false)
+	multicaBtn := toolbarButton("Multica 连接", func() { go p.openMultica(a) })
+	syncToolbar.AddItem(dryBtn, 20, 0, true).AddItem(syncBtn, 14, 0, false).
+		AddItem(multicaBtn, 16, 0, false).AddItem(nil, 0, 1, false)
 
 	body := tview.NewFlex().
 		AddItem(left, 0, 1, true).
@@ -385,6 +389,11 @@ func (p *syncPage) applyReport(report *syncengine.Report, dryRun bool) {
 		lines = append(lines, "[green:b]同步报告[-]")
 	}
 	for _, per := range report.PerAgent {
+		if per.Error != "" {
+			lines = append(lines, "[::b]"+per.AgentType+"[-]  "+orDash(per.File))
+			lines = append(lines, "  [red]✗ 同步失败: "+per.Error+"[-]")
+			continue
+		}
 		active := 0
 		var sub []string
 		for _, ch := range per.Changes {

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hxgh776/beaver/internal/adapters"
 	"github.com/hxgh776/beaver/internal/autostart"
 	"github.com/hxgh776/beaver/internal/backup"
 	"github.com/hxgh776/beaver/internal/fsutil"
@@ -149,6 +150,13 @@ func registerSettingsRoutes(rt *Router, d *Daemon) {
 		if agentType == "" {
 			SendError(ctx.Res, 400, "缺少 agentType")
 			return
+		}
+		// 远端型 agent（multica 等）没有本地配置文件，备份/恢复不适用
+		if ref, ok := d.agentRef(agentType); ok {
+			if ra, isRemote := ref.Adapter.(adapters.RemoteAgent); isRemote && ra.IsRemote() {
+				SendError(ctx.Res, 400, "该 agent 无本地配置文件，不支持备份恢复", "REMOTE_AGENT")
+				return
+			}
 		}
 		backupPath := filepath.Join(d.Store.BackupsDir(), agentType, name)
 		content, ok2, err := fsutil.ReadTextIfExists(backupPath)

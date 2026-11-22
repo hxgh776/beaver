@@ -1,4 +1,4 @@
-// 10 个 AI coding agent 的适配器组装。对应 TS 侧 packages/core/src/agents.ts。
+// 内置 agent 的适配器组装（10 个本地 AI coding agent + Multica 平台）。
 package adapters
 
 import (
@@ -181,6 +181,15 @@ func MakeAgents(baseDir string) map[string]*AgentDefinition {
 		}),
 	}
 
+	// Multica：CLI 外置型——配置落在 Multica workspace 的 MCP 库（无本地文件）。
+	// 连接设置由 daemon 启动后注入（SetSource）；beaver 只管库本身，
+	// 不碰 Multica 平台内部把条目分给哪些 agent。
+	agents[store.AgentMultica] = &AgentDefinition{
+		Type:        store.AgentMultica,
+		DisplayName: "Multica",
+		Adapter:     NewMulticaAdapter(),
+	}
+
 	return agents
 }
 
@@ -191,5 +200,6 @@ func AgentDefinitions(baseDir string) []*AgentDefinition {
 		m[store.AgentClaudeCode], m[store.AgentCodex], m[store.AgentCursor], m[store.AgentTrae],
 		m[store.AgentOpencode], m[store.AgentClaudeDesktop], m[store.AgentWindsurf],
 		m[store.AgentGeminiCLI], m[store.AgentZCode], m[store.AgentWorkBuddy],
+		m[store.AgentMultica],
 	}
 }
