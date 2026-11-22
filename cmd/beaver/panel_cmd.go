@@ -11,9 +11,8 @@ import (
 )
 
 func cmdPanel() error {
-	if ownsConsole() {
-		hideConsoleWindow()
-	}
+	// 窗口进程同样不留控制台（手动从终端执行 __panel 排障时也一致）。
+	detachConsole()
 	// 父进程已按实际绑定端口探测过 daemon，优先用它；直接运行（无环境变量）时自行探测。
 	base := os.Getenv("BEAVER_PANEL_URL")
 	if base == "" {

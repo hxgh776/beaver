@@ -14,5 +14,8 @@ func String() string {
 	return value + " (" + commit + ")"
 }
 
+// Value 返回纯版本号（不含 commit），供 API / 面板页头展示。
+func Value() string { return value }
+
 // Commit 返回构建时注入的 commit（未注入时为空）。
 func Commit() string { return commit }

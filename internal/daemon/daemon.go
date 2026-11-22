@@ -22,12 +22,14 @@ import (
 	"github.com/hxgh776/beaver/internal/skills"
 	"github.com/hxgh776/beaver/internal/store"
 	"github.com/hxgh776/beaver/internal/syncengine"
+	"github.com/hxgh776/beaver/internal/version"
 	"github.com/hxgh776/beaver/internal/webui"
 	"github.com/hxgh776/beaver/internal/writeengine"
 )
 
-// Version daemon 版本（与 CLI/package.json 统一）。
-const Version = "0.1.0"
+// Version daemon 版本：与 CLI 同源（internal/version，构建时 ldflags 注入），
+// /api/status 的面板页头直接显示它——硬编码会让 UI 永远停在旧版本号。
+var Version = version.Value()
 
 // GatewayStatus 网关运行态（Port nil = 未运行）。
 type GatewayStatus struct {

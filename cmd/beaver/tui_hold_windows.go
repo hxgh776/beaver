@@ -14,6 +14,7 @@ var (
 	procGetConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleProcessList")
 	procGetConsoleWindow      = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleWindow")
 	procShowWindow            = windows.NewLazySystemDLL("user32.dll").NewProc("ShowWindow")
+	procFreeConsole           = windows.NewLazySystemDLL("kernel32.dll").NewProc("FreeConsole")
 	procMessageBoxW           = windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW")
 )
 
@@ -26,6 +27,16 @@ func hideConsoleWindow() {
 		return
 	}
 	_, _, _ = procShowWindow.Call(hwnd, swHide)
+}
+
+// detachConsole 把本进程从 Windows 控制台解绑（双击启动的桌面路径专用）。
+// 只 ShowWindow 不够：默认终端是 Windows Terminal 时控制台走 ConPTY，
+// GetConsoleWindow 得到的是伪控制台窗口，ShowWindow 关不掉用户看到的标签页。
+// FreeConsole 让该终端会话失去最后一个客户端，标签页随会话关闭，
+// 双击后只剩面板窗口；之后 stdout/stderr 写入失败会被忽略（日志另有文件落地）。
+func detachConsole() {
+	hideConsoleWindow()
+	_, _, _ = procFreeConsole.Call()
 }
 
 // desktopNotify 双击路径没有可见控制台，启动失败用系统消息框告知用户。

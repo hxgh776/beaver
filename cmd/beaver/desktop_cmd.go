@@ -75,10 +75,9 @@ func trimSpaceBytes(b []byte) []byte {
 }
 
 func cmdDesktop() error {
-	// 双击新建的独占控制台：隐藏，避免终端界面抢在窗口前出现。
-	if ownsConsole() {
-		hideConsoleWindow()
-	}
+	// 双击/桌面路径不保留任何控制台窗口：解绑控制台，
+	// 否则 Windows Terminal（ConPTY）会一直挂着一个日志标签页。
+	detachConsole()
 
 	// 已有托盘壳 = 单实例：只把面板窗口带到前台（没有窗口则新起一个窗口进程）。
 	if trayAlive() {
