@@ -19,6 +19,13 @@ if (-not $Exe) { $Exe = Join-Path $root "release\v0.1.0\beaver.exe" }
 if (-not (Test-Path $Exe)) { throw "找不到 exe: $Exe（先运行 scripts/build-release.ps1）" }
 $Exe = (Resolve-Path $Exe).Path
 
+# 隔离前置条件：本机不能有别的 beaver 在跑。面板按窗口标题全局查找，
+# 外部实例会让「daemon 不可达 → 错误页」场景直接聚焦到别人的窗口而误报 FAIL。
+$foreign = @(Get-CimInstance Win32_Process -Filter "name='beaver.exe'" -ErrorAction SilentlyContinue)
+if ($foreign.Count -gt 0) {
+    throw "请先退出本机正在运行的 beaver（pid: $($foreign.ProcessId -join ',')）再跑回归，否则场景 4 会被已有面板窗口干扰"
+}
+
 $base = Join-Path $env:TEMP ("beaver-verify-" + (Get-Date -Format "yyyyMMddHHmmss"))
 $homeDir = Join-Path $base "home"
 $agents = Join-Path $base "agents"
@@ -90,6 +97,20 @@ try {
     if ($title -eq "Beaver（河狸）") { Pass "原生面板窗口存在（标题 $title）" } else { Fail "未找到标题为 Beaver（河狸） 的窗口（实际: $title）" }
     $procCount = (BeaverProcs).Count
     if ($procCount -ge 2) { Pass "进程模型: 托盘 + __panel（$procCount 个）" } else { Fail "进程数不足: $procCount" }
+    # 控制台残留断言（VENU-43）：双击后不得再挂一个 cmd / Windows Terminal 日志窗。
+    # 控制台子系统 exe 会被系统分配控制台；默认终端为 Windows Terminal 时是 ConPTY，
+    # ShowWindow 关不掉标签页，旧实现因此「面板 + 一个日志终端」并存。
+    $trayNow = (BeaverProcs | Where-Object { $_.CommandLine -notmatch "__panel" } | Select-Object -First 1).ProcessId
+    $panelNow = (BeaverProcs | Where-Object { $_.CommandLine -match "__panel" } | Select-Object -First 1).ProcessId
+    $consoleKids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        ($_.ParentProcessId -eq $trayNow -or $_.ParentProcessId -eq $panelNow) -and
+        ($_.Name -eq "conhost.exe" -or $_.Name -eq "OpenConsole.exe")
+    })
+    if ($consoleKids.Count -eq 0) {
+        Pass "无控制台残留（托盘/窗口进程下没有 conhost/OpenConsole）"
+    } else {
+        Fail "残留控制台窗口: $($consoleKids.ProcessId -join ',')"
+    }
     if ($Screenshot) { Shot "01-first-launch.png" }
 
     # 2) 二次双击：单实例
