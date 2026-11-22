@@ -21,7 +21,7 @@ $Exe = (Resolve-Path $Exe).Path
 
 # 隔离前置条件：本机不能有别的 beaver 在跑。面板按窗口标题全局查找，
 # 外部实例会让「daemon 不可达 → 错误页」场景直接聚焦到别人的窗口而误报 FAIL。
-$foreign = @(Get-CimInstance Win32_Process -Filter "name='beaver.exe'" -ErrorAction SilentlyContinue)
+$foreign = @(Get-CimInstance Win32_Process -Filter "name LIKE 'beaver%'" -ErrorAction SilentlyContinue)
 if ($foreign.Count -gt 0) {
     throw "请先退出本机正在运行的 beaver（pid: $($foreign.ProcessId -join ',')）再跑回归，否则场景 4 会被已有面板窗口干扰"
 }
@@ -39,7 +39,7 @@ function Note($m) { Write-Host "      $m" }
 function Status() {
     try { return Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/status" -TimeoutSec 3 } catch { return $null }
 }
-function BeaverProcs() { @(Get-CimInstance Win32_Process -Filter "name='beaver.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$base*" }) }
+function BeaverProcs() { @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "beaver*" -and $_.CommandLine -like "*$base*" }) }
 function KillScoped() {
     foreach ($p in (BeaverProcs)) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }
 }
@@ -100,16 +100,24 @@ try {
     # 控制台残留断言（VENU-43）：双击后不得再挂一个 cmd / Windows Terminal 日志窗。
     # 控制台子系统 exe 会被系统分配控制台；默认终端为 Windows Terminal 时是 ConPTY，
     # ShowWindow 关不掉标签页，旧实现因此「面板 + 一个日志终端」并存。
-    $trayNow = (BeaverProcs | Where-Object { $_.CommandLine -notmatch "__panel" } | Select-Object -First 1).ProcessId
-    $panelNow = (BeaverProcs | Where-Object { $_.CommandLine -match "__panel" } | Select-Object -First 1).ProcessId
-    $consoleKids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        ($_.ParentProcessId -eq $trayNow -or $_.ParentProcessId -eq $panelNow) -and
-        ($_.Name -eq "conhost.exe" -or $_.Name -eq "OpenConsole.exe")
-    })
-    if ($consoleKids.Count -eq 0) {
-        Pass "无控制台残留（托盘/窗口进程下没有 conhost/OpenConsole）"
+    # 以 tray.pid 为准枚举子进程：按命令行匹配会漏（exe 改名时进程名也变）。
+    $trayNow = 0
+    $pidFile = Join-Path $homeDir "tray.pid"
+    if (Test-Path $pidFile) { $trayNow = [int](Get-Content $pidFile) }
+    if ($trayNow -gt 0 -and (Get-Process -Id $trayNow -ErrorAction SilentlyContinue)) {
+        $panelNow = (Get-CimInstance Win32_Process -Filter "ParentProcessId=$trayNow" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "beaver*" } | Select-Object -First 1).ProcessId
+        $kids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            ($_.ParentProcessId -eq $trayNow -or $_.ParentProcessId -eq $panelNow) -and
+            ($_.Name -eq "conhost.exe" -or $_.Name -eq "OpenConsole.exe")
+        })
+        if ($kids.Count -eq 0) {
+            Pass "无控制台残留（托盘 $trayNow / 窗口 $panelNow 下没有 conhost/OpenConsole）"
+        } else {
+            Fail "残留控制台窗口: $($kids.ProcessId -join ',')（宿主 pid $trayNow）"
+        }
     } else {
-        Fail "残留控制台窗口: $($consoleKids.ProcessId -join ',')"
+        Fail "无法断言控制台残留：tray.pid 缺失或进程已退出"
     }
     if ($Screenshot) { Shot "01-first-launch.png" }
 
