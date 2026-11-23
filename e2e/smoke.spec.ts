@@ -115,7 +115,7 @@ test('E-08 分组：新建分组、加入 MCP、关联 agent 后有效绑定生�
   await expect(page.getByTestId('report-claude-code')).toContainText('smoke-fs');
 });
 
-test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
+test('E-09 Skill 管理页：仓库入口可见 + 非法仓库地址报错 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
   await auth(page);
   await page.getByTestId('tab-skills').click();
   await expect(page.getByTestId('btn-skills-updates')).toBeVisible();
@@ -123,6 +123,13 @@ test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载'
   await expect(page.getByTestId('skill-repo-install-input')).toBeVisible();
   await expect(page.getByTestId('skill-repo-install-btn')).toBeVisible();
   await expect(page.getByTestId('btn-skills-scan-local')).toBeVisible();
+  // 非 GitHub 地址必须给出可见错误，且不向列表新增条目（离线环境不下载真实仓库；
+  // 仓库分组的聚合逻辑由 Go 单测 TestListGrouped 覆盖）
+  const cardsBefore = await page.locator('[data-testid^="skill-card-"]').count();
+  await page.getByTestId('skill-repo-install-input').fill('https://gitlab.com/foo/bar');
+  await page.getByTestId('skill-repo-install-btn').click();
+  await expect(page.getByText(/仅支持 GitHub 仓库地址/)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid^="skill-card-"]')).toHaveCount(cardsBefore);
   // 安装本地 ZIP（fixtures/demo-skill.zip）
   await page.getByTestId('btn-skills-zip').click();
   await page.getByTestId('skill-zip-input').setInputFiles(path.join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/skills/demo-skill.zip'));

@@ -673,6 +673,129 @@ func TestScanAndAdoptLocalSkills(t *testing.T) {
 	}
 }
 
+// U-SK-10 跨 agent 同名不同内容：第二条纳管必须报错不覆盖，SSOT 内容与来源保持不变
+func TestAdoptSameNameCrossAgentConflict(t *testing.T) {
+	e := newEnv(t)
+	claudeDir := filepath.Join(e.sandbox, ".claude", "skills", "frontend-design")
+	codexDir := filepath.Join(e.sandbox, ".codex", "skills", "frontend-design")
+	mustWrite(t, filepath.Join(claudeDir, "SKILL.md"), "---\nname: frontend-design\n---\nfrom claude\n")
+	mustWrite(t, filepath.Join(codexDir, "SKILL.md"), "---\nname: frontend-design\n---\nfrom codex\n")
+
+	first, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "claude-code", Name: "frontend-design", Path: claudeDir},
+	})
+	mustNoErr(t, err)
+	if len(first.Installed) != 1 || len(first.Failed) != 0 {
+		t.Fatalf("首次纳管应成功: %+v", first)
+	}
+	beforeHash := first.Installed[0].ContentHash
+
+	second, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "codex", Name: "frontend-design", Path: codexDir},
+	})
+	mustNoErr(t, err)
+	if len(second.Installed) != 0 || len(second.Failed) != 1 {
+		t.Fatalf("跨 agent 同名应进 failed: %+v", second)
+	}
+	if !containsStr2(second.Failed[0].Reason, "claude-code") {
+		t.Fatalf("失败原因应指明占用来源: %+v", second.Failed[0])
+	}
+
+	row, err := e.service.skillRow(first.Installed[0].ID)
+	mustNoErr(t, err)
+	if row.ContentHash != beforeHash {
+		t.Fatalf("SSOT 内容不得被覆盖: hash %s → %s", beforeHash, row.ContentHash)
+	}
+	if row.AdoptedFrom == nil || *row.AdoptedFrom != "claude-code" {
+		t.Fatalf("纳管来源不得被改写: %+v", row.AdoptedFrom)
+	}
+	body, err := os.ReadFile(filepath.Join(e.sandbox, "skills", row.Directory, "SKILL.md"))
+	mustNoErr(t, err)
+	if !containsStr2(string(body), "from claude") || containsStr2(string(body), "from codex") {
+		t.Fatalf("SSOT 内容应为 claude 原件: %s", body)
+	}
+
+	// 扫描：来源 agent 标已纳管；另一个 agent 的同名项不标已纳管，但标出占用来源
+	scan, err := e.service.ScanLocalSkills()
+	mustNoErr(t, err)
+	byAgent := map[string]LocalSkillScanItem{}
+	for _, it := range scan.Items {
+		byAgent[it.Agent] = it
+	}
+	if claude, ok := byAgent["claude-code"]; !ok || !claude.Adopted {
+		t.Fatalf("claude-code 项应标已纳管: %+v", byAgent)
+	}
+	if codex, ok := byAgent["codex"]; !ok || codex.Adopted || codex.AdoptedFrom != "claude-code" {
+		t.Fatalf("codex 同名项不应标已纳管，且应标出占用来源: %+v", byAgent)
+	}
+}
+
+// U-SK-11 同 agent 重复纳管：幂等刷新（注册行不重复、内容随源更新）
+func TestAdoptSameAgentRefreshes(t *testing.T) {
+	e := newEnv(t)
+	claudeDir := filepath.Join(e.sandbox, ".claude", "skills", "refresh-me")
+	mustWrite(t, filepath.Join(claudeDir, "SKILL.md"), "---\nname: refresh-me\n---\nv1\n")
+
+	first, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "claude-code", Name: "refresh-me", Path: claudeDir},
+	})
+	mustNoErr(t, err)
+	if len(first.Installed) != 1 || len(first.Failed) != 0 {
+		t.Fatalf("首次纳管应成功: %+v", first)
+	}
+	firstHash := first.Installed[0].ContentHash
+
+	// 源内容更新后同 agent 再次纳管 → 刷新，不报错
+	mustWrite(t, filepath.Join(claudeDir, "SKILL.md"), "---\nname: refresh-me\n---\nv2 refreshed\n")
+	second, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "claude-code", Name: "refresh-me", Path: claudeDir},
+	})
+	mustNoErr(t, err)
+	if len(second.Installed) != 1 || len(second.Failed) != 0 {
+		t.Fatalf("同 agent 重复纳管应刷新: %+v", second)
+	}
+	if len(e.config.Skills) != 1 {
+		t.Fatalf("刷新不得产生重复注册行: %+v", e.config.Skills)
+	}
+	if second.Installed[0].ContentHash == firstHash {
+		t.Fatalf("源内容变化后应刷新内容哈希")
+	}
+	body, err := os.ReadFile(filepath.Join(e.sandbox, "skills", second.Installed[0].Directory, "SKILL.md"))
+	mustNoErr(t, err)
+	if !containsStr2(string(body), "v2 refreshed") {
+		t.Fatalf("SSOT 应刷新为最新内容: %s", body)
+	}
+}
+
+// U-SK-12 批量纳管含重名：同一请求内只装一次，重复项进 failed，installed 不出现同 id 两次
+func TestAdoptBatchDuplicateNames(t *testing.T) {
+	e := newEnv(t)
+	claudeDir := filepath.Join(e.sandbox, ".claude", "skills", "dup-skill")
+	codexDir := filepath.Join(e.sandbox, ".codex", "skills", "dup-skill")
+	mustWrite(t, filepath.Join(claudeDir, "SKILL.md"), "---\nname: dup-skill\n---\nfrom claude\n")
+	mustWrite(t, filepath.Join(codexDir, "SKILL.md"), "---\nname: dup-skill\n---\nfrom codex\n")
+
+	report, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "claude-code", Name: "dup-skill", Path: claudeDir},
+		{Agent: "codex", Name: "dup-skill", Path: codexDir},
+	})
+	mustNoErr(t, err)
+	if len(report.Installed) != 1 || len(report.Failed) != 1 {
+		t.Fatalf("批量重名应只装一次: %+v", report)
+	}
+	if len(e.config.Skills) != 1 {
+		t.Fatalf("注册表不得出现同目录两行: %+v", e.config.Skills)
+	}
+	if e.config.Skills[0].ID != report.Installed[0].ID {
+		t.Fatalf("installed 行应与注册行一致: %+v", e.config.Skills)
+	}
+	body, err := os.ReadFile(filepath.Join(e.sandbox, "skills", report.Installed[0].Directory, "SKILL.md"))
+	mustNoErr(t, err)
+	if !containsStr2(string(body), "from claude") {
+		t.Fatalf("第一项（claude）应生效: %s", body)
+	}
+}
+
 // —— 辅助：无依赖最小 ZIP 构造（stored）——//
 
 type zipEntry struct {

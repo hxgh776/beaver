@@ -429,8 +429,10 @@ type LocalSkillScanItem struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	Description string `json:"description,omitempty"`
-	// Adopted 已纳管进 SSOT（按纳管后的目录名匹配）
+	// Adopted 已纳管进 SSOT（目录名 + 来源 agent 均匹配才算）
 	Adopted bool `json:"adopted"`
+	// AdoptedFrom 同名目录已被其他 agent 纳管的来源 agent；非空时 Adopted 为 false
+	AdoptedFrom string `json:"adoptedFrom,omitempty"`
 }
 
 // LocalSkillScanError 单个 agent 目录扫描失败原因（缺失/无权限），不阻断整体扫描。
@@ -472,9 +474,9 @@ func localAgentTypes() []string {
 // ScanLocalSkills 扫描各 agent 本机 skills 目录，返回已存在的 skill（严格只读，不改任何真实目录）。
 func (s *Service) ScanLocalSkills() (LocalSkillScanResult, error) {
 	res := LocalSkillScanResult{Items: []LocalSkillScanItem{}, Errors: []LocalSkillScanError{}}
-	adopted := map[string]struct{}{}
+	adopted := map[string]*string{}
 	for _, row := range s.opts.GetConfig().Skills {
-		adopted[row.Directory] = struct{}{}
+		adopted[row.Directory] = row.AdoptedFrom
 	}
 	for _, agent := range localAgentTypes() {
 		dir := s.targetDirs[agent]
@@ -493,8 +495,18 @@ func (s *Service) ScanLocalSkills() (LocalSkillScanResult, error) {
 			if sc.Metadata != nil {
 				item.Description = sc.Metadata.Description
 			}
-			if _, ok := adopted[SanitizeInstallName(name)]; ok {
-				item.Adopted = true
+			if from, ok := adopted[SanitizeInstallName(name)]; ok {
+				switch {
+				case from == nil:
+					// 本地 ZIP / 手动安装占用该目录名：同名纳管必冲突，标已纳管
+					item.Adopted = true
+				case *from == agent:
+					// 同 agent 同一份 skill：已纳管（重复纳管是幂等刷新）
+					item.Adopted = true
+				default:
+					// 其他 agent 的同名 skill：内容可能不同，不能当作已纳管；标出来源供用户判断
+					item.AdoptedFrom = *from
+				}
 			}
 			res.Items = append(res.Items, item)
 		}
@@ -506,6 +518,7 @@ func (s *Service) ScanLocalSkills() (LocalSkillScanResult, error) {
 // 只写 SSOT 与注册表，绝不修改真实 agent 目录；复用 admit 的「同名异来源报错不覆盖」语义。
 func (s *Service) AdoptLocalSkills(inputs []LocalSkillAdoptInput) (AdoptResult, error) {
 	res := AdoptResult{Installed: []store.InstalledSkill{}, Failed: []CollectionInstallFailure{}}
+	seen := map[string]string{}
 	for _, in := range inputs {
 		src := in.Path
 		if src == "" {
@@ -517,6 +530,15 @@ func (s *Service) AdoptLocalSkills(inputs []LocalSkillAdoptInput) (AdoptResult, 
 			src = found
 		}
 		hint := firstNonEmpty(in.Name, filepath.Base(src))
+		dirName := SanitizeInstallName(hint)
+		if prev, dup := seen[dirName]; dup {
+			res.Failed = append(res.Failed, CollectionInstallFailure{
+				Directory: dirName,
+				Reason:    fmt.Sprintf("同一请求内目录名 %s 重复（已处理来自 %s 的同名项），只纳管第一项", dirName, prev),
+			})
+			continue
+		}
+		seen[dirName] = firstNonEmpty(in.Agent, "未知来源")
 		if !dirExists(src) {
 			res.Failed = append(res.Failed, CollectionInstallFailure{Directory: hint, Reason: "源目录不存在"})
 			continue
@@ -649,6 +671,15 @@ type commonAdmit struct {
 	EnableFor []string
 }
 
+// sameAdoptOrigin 本地来源同源判定：双方都无纳管来源（本地 ZIP / 手动安装）视为同源；
+// 都记录了来源 agent 时必须一致（同一 agent 重复纳管 = 幂等刷新，内容变了也刷新）。
+func sameAdoptOrigin(existing, incoming *string) bool {
+	if existing == nil || incoming == nil {
+		return existing == nil && incoming == nil
+	}
+	return *existing == *incoming
+}
+
 // admit 把解析出的源目录收编进 SSOT（冲突检查 → 复制 → 哈希 → 落库 → 按需投影）。
 func (s *Service) admit(input admitInput) (store.InstalledSkill, error) {
 	config := s.opts.GetConfig()
@@ -671,8 +702,15 @@ func (s *Service) admit(input admitInput) (store.InstalledSkill, error) {
 				*existing.RepoOwner == input.Repo.Owner && *existing.RepoName == input.Repo.Name && *existing.Branch == input.Repo.Branch
 		} else {
 			sameRepo = existing.RepoOwner == nil && existing.RepoName == nil && existing.Source == input.Source
+			if sameRepo {
+				// 本地来源还要看纳管来源 agent：不同 agent 的同名 skill 内容可能不同，不得静默覆盖
+				sameRepo = sameAdoptOrigin(existing.AdoptedFrom, input.AdoptedFrom)
+			}
 		}
 		if !sameRepo {
+			if existing.RepoOwner == nil && existing.RepoName == nil && existing.AdoptedFrom != nil {
+				return store.InstalledSkill{}, inputErrf("目录名 %s 已被从 %s 纳管的同名技能占用（如需替换请先卸载旧目录）", directory, *existing.AdoptedFrom)
+			}
 			occupier := "本地/其他来源"
 			if existing.RepoOwner != nil && existing.RepoName != nil {
 				occupier = fmt.Sprintf(" %s/%s", *existing.RepoOwner, *existing.RepoName)
