@@ -208,7 +208,42 @@ export interface SkillWithStatus {
   contentHash: string;
   installedAt: string;
   updatedAt: string;
+  /** 纳管来源 agent（本机扫描纳管时记录） */
+  adoptedFrom?: string;
   targets: SkillProjectionStatusDTO[];
+}
+
+/** 已安装技能按 GitHub 仓库维度的分组（本地来源归入 repo 为空的「本地」组） */
+export interface SkillRepoGroup {
+  repo: string;
+  branch: string;
+  skillCount: number;
+  skills: SkillWithStatus[];
+}
+
+/** 本机 agent skills 目录扫描项 */
+export interface LocalSkillScanItem {
+  agent: string;
+  name: string;
+  path: string;
+  description?: string;
+  adopted: boolean;
+}
+
+export interface LocalSkillScanError {
+  agent: string;
+  reason: string;
+}
+
+export interface LocalSkillScanResult {
+  items: LocalSkillScanItem[];
+  errors: LocalSkillScanError[];
+}
+
+/** 纳管本机 skill 结果 */
+export interface SkillAdoptReport {
+  installed: SkillWithStatus[];
+  failed: Array<{ directory: string; reason: string }>;
 }
 
 export interface SkillSearchResult {

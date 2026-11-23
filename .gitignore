@@ -1,7 +1,7 @@
 .worktrees/
 # 前端构建链：node_modules 与 packages/web/dist 不入库，产物提交在 internal/webui/dist
 node_modules/
-dist/
+/packages/web/dist/
 coverage/
 *.log
 .DS_Store
@@ -17,3 +17,7 @@ awesome-design-md/
 
 # 发布产物（release/<version>/ 下的 exe/zip 只作附件交付，不入库）
 release/
+
+# 运行时缓存（agent 沙箱会把 Go/pnpm 缓存落在仓库根，禁止入库）
+.gocache/
+.pnpm-store/

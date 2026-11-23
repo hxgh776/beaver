@@ -115,13 +115,26 @@ test('E-08 分组：新建分组、加入 MCP、关联 agent 后有效绑定生�
   await expect(page.getByTestId('report-claude-code')).toContainText('smoke-fs');
 });
 
-test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
+test('E-09 Skill 管理页：仓库入口可见 + 非法仓库地址报错 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
   await auth(page);
   await page.getByTestId('tab-skills').click();
   await expect(page.getByTestId('btn-skills-updates')).toBeVisible();
+  // 仓库维度安装入口与本机扫描入口可见
+  await expect(page.getByTestId('skill-repo-install-input')).toBeVisible();
+  await expect(page.getByTestId('skill-repo-install-btn')).toBeVisible();
+  await expect(page.getByTestId('btn-skills-scan-local')).toBeVisible();
+  // 非 GitHub 地址必须给出可见错误，且不向列表新增条目（离线环境不下载真实仓库；
+  // 仓库分组的聚合逻辑由 Go 单测 TestListGrouped 覆盖）
+  const cardsBefore = await page.locator('[data-testid^="skill-card-"]').count();
+  await page.getByTestId('skill-repo-install-input').fill('https://gitlab.com/foo/bar');
+  await page.getByTestId('skill-repo-install-btn').click();
+  await expect(page.getByText(/仅支持 GitHub 仓库地址/)).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('[data-testid^="skill-card-"]')).toHaveCount(cardsBefore);
   // 安装本地 ZIP（fixtures/demo-skill.zip）
   await page.getByTestId('btn-skills-zip').click();
   await page.getByTestId('skill-zip-input').setInputFiles(path.join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/skills/demo-skill.zip'));
+  // 本地来源归入一条「本地 / 其他」分组，卡片在其内
+  await expect(page.getByTestId('skill-group-local')).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId('skill-card-skill-demo-skill')).toBeVisible({ timeout: 15000 });
   // 分发区默认收起——先展开，再点 Claude Code 芯片切换
   await page.getByTestId('skill-targets-toggle-skill-demo-skill').click();
@@ -134,6 +147,29 @@ test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载'
   await page.getByTestId('skill-uninstall-skill-demo-skill').click();
   await page.getByRole('button', { name: '卸载' }).last().click();
   await expect(page.getByText(/已卸载/)).toBeVisible({ timeout: 15000 });
+});
+
+test('E-12 本机 skill 扫描与纳管：列出发现项、纳管进 SSOT、不改动源目录', async ({ page }) => {
+  await auth(page);
+  // 在沙箱 agent 根下预置一个本机 skill（daemon --agent-home 指向沙箱）
+  const localDir = path.join(daemon.homeDir, '.claude', 'skills', 'e2e-local-skill');
+  await fs.mkdir(localDir, { recursive: true });
+  await fs.writeFile(path.join(localDir, 'SKILL.md'), '---\nname: e2e-local-skill\ndescription: e2e\n---\nbody\n');
+
+  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('btn-skills-scan-local').click();
+  await expect(page.getByTestId('skill-scan-item-claude-code-e2e-local-skill')).toBeVisible({ timeout: 15000 });
+  await page.getByTestId('skill-scan-check-claude-code-e2e-local-skill').check();
+  await page.getByTestId('skill-adopt-btn').click();
+  // 纳管后进入「本地 / 其他」分组
+  await expect(page.getByTestId('skill-group-local')).toContainText('e2e-local-skill', { timeout: 15000 });
+  // 源目录未被改动
+  const src = await fs.readFile(path.join(localDir, 'SKILL.md'), 'utf8');
+  expect(src).toContain('body');
+  // 重复扫描：已纳管项不可再勾选
+  await page.getByTestId('btn-skills-scan-local').click();
+  await expect(page.getByTestId('skill-scan-check-claude-code-e2e-local-skill')).toBeDisabled({ timeout: 15000 });
+  await page.keyboard.press('Escape');
 });
 
 test('E-10 设置页：常规项、恢复备份区与关于可见', async ({ page }) => {

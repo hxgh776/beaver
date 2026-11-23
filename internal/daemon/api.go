@@ -864,6 +864,50 @@ func registerSkillRoutes(rt *Router, d *Daemon) {
 		SendJSON(ctx.Res, 200, map[string]any{"skills": list, "ssotDir": d.Skills.SkillsDir()})
 	})
 
+	// 仓库维度分组：仓库为一级条目（含仓库内技能数），本地来源归入一条「本地」组
+	rt.Get("/api/skills/grouped", func(ctx *RequestContext) {
+		groups, err := d.Skills.ListGrouped()
+		if err != nil {
+			SendError(ctx.Res, 500, err.Error())
+			return
+		}
+		SendJSON(ctx.Res, 200, map[string]any{"groups": groups, "ssotDir": d.Skills.SkillsDir()})
+	})
+
+	// 本机 agent skill 扫描（严格只读）：列出各 agent skills 目录下的发现项与是否已纳管
+	rt.Get("/api/skills/scan-local", func(ctx *RequestContext) {
+		report, err := d.Skills.ScanLocalSkills()
+		if err != nil {
+			SendError(ctx.Res, 500, err.Error())
+			return
+		}
+		SendJSON(ctx.Res, 200, report)
+	})
+
+	// 纳管本机 skill：只写 SSOT，绝不修改真实 agent 目录
+	rt.Post("/api/skills/adopt", func(ctx *RequestContext) {
+		body, err := ctx.Body()
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		items, err := parseAdoptItems(body["items"])
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error())
+			return
+		}
+		if len(items) == 0 {
+			SendError(ctx.Res, 400, "未选择要纳管的 skill")
+			return
+		}
+		report, err := d.Skills.AdoptLocalSkills(items)
+		if err != nil {
+			SendError(ctx.Res, 400, err.Error(), "SKILL_ADOPT_FAILED")
+			return
+		}
+		SendJSON(ctx.Res, 200, report)
+	})
+
 	rt.Get("/api/skills/search", func(ctx *RequestContext) {
 		q := ctx.Query.Get("q")
 		limit := clampInt(parseIntOr(ctx.Query.Get("limit"), 20), 1, 50)
@@ -1015,6 +1059,30 @@ func strList(v any) []string {
 		}
 	}
 	return out
+}
+
+// parseAdoptItems 解析纳管入参 items：[{agent,name,path}]，忽略缺少 name 与 path 的项。
+func parseAdoptItems(v any) ([]skills.LocalSkillAdoptInput, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("items 必须是数组")
+	}
+	out := make([]skills.LocalSkillAdoptInput, 0, len(list))
+	for _, x := range list {
+		m, ok := x.(map[string]any)
+		if !ok {
+			continue
+		}
+		item := skills.LocalSkillAdoptInput{}
+		item.Agent, _ = m["agent"].(string)
+		item.Name, _ = m["name"].(string)
+		item.Path, _ = m["path"].(string)
+		if item.Name == "" && item.Path == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 func controlUpstream(d *Daemon, ctx *RequestContext, action string) {

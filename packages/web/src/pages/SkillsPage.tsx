@@ -1,12 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import type { SkillCollectionReport, SkillSearchResult, SkillUpdateReport, SkillWithStatus } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, Icon, Pager, Segmented, Spinner } from '../ui';
-import { useToast } from '../ui';
-
-/** 已安装 skill 卡片分页：xl 3 列 × 3 行（分发区默认收起，单卡约 150px，768px 高度整屏内） */
-const INSTALLED_PAGE_SIZE = 9;
+import type {
+  LocalSkillScanItem,
+  LocalSkillScanResult,
+  SkillAdoptReport,
+  SkillCollectionReport,
+  SkillRepoGroup,
+  SkillSearchResult,
+  SkillUpdateReport,
+  SkillWithStatus,
+} from '../api';
+import { Badge, Btn, Card, ConfirmDialog, Icon, Modal, Segmented, Spinner } from '../ui';
+import { inputCls, useToast } from '../ui';
 
 /** skill 投影支持的 agent 展示名（与 core SKILL_AGENT_DIRS 对应；未知类型回退原值） */
 const SKILL_AGENT_LABEL: Record<string, string> = {
@@ -35,6 +41,14 @@ function matchInstalled(s: { repo: string; branch: string; skillId: string; name
   return { exact, repoCount: sameRepo.length };
 }
 
+function groupLabel(g: SkillRepoGroup): string {
+  return g.repo === '' ? '本地 / 其他' : g.repo;
+}
+
+function groupTestId(g: SkillRepoGroup): string {
+  return `skill-group-${g.repo === '' ? 'local' : g.repo}`;
+}
+
 export function SkillsPage() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -46,13 +60,14 @@ export function SkillsPage() {
   const zipInput = useRef<HTMLInputElement>(null);
   const [enableOnInstall, setEnableOnInstall] = useState(true);
   const [tab, setTab] = useState<TabKey>('installed');
-  const [installedPage, setInstalledPage] = useState(0);
+  const [repoInput, setRepoInput] = useState('');
 
   const skills = useQuery({
     queryKey: ['skills'],
-    queryFn: () => api.get<{ skills: SkillWithStatus[]; ssotDir: string }>('/api/skills'),
+    queryFn: () => api.get<{ groups: SkillRepoGroup[]; ssotDir: string }>('/api/skills/grouped'),
   });
-  const installed = skills.data?.skills ?? [];
+  const groups = skills.data?.groups ?? [];
+  const installed = useMemo(() => groups.flatMap((g) => g.skills), [groups]);
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ['skills'] });
@@ -136,6 +151,61 @@ export function SkillsPage() {
     onSettled: () => setPendingRepo(null),
   });
 
+  const installRepo = (): void => {
+    const repo = repoInput.trim();
+    if (repo === '') return;
+    setPendingRepo(repo);
+    installCollection.mutate(repo);
+  };
+
+  // 本机 skill 扫描与纳管
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanResult, setScanResult] = useState<LocalSkillScanResult | null>(null);
+  const [selectedScan, setSelectedScan] = useState<Set<string>>(new Set());
+
+  const scanLocal = useMutation({
+    mutationFn: () => api.get<LocalSkillScanResult>('/api/skills/scan-local'),
+    onSuccess: (res) => {
+      setScanResult(res);
+      setSelectedScan(new Set());
+      setScanOpen(true);
+    },
+    onError: fail,
+  });
+
+  const adopt = useMutation({
+    mutationFn: (items: LocalSkillScanItem[]) =>
+      api.post<SkillAdoptReport>('/api/skills/adopt', {
+        items: items.map((it) => ({ agent: it.agent, name: it.name, path: it.path })),
+      }),
+    onSuccess: (res) => {
+      const n = res.installed.length;
+      toast.ok(
+        `已纳管 ${n} 个本机 skill${res.failed.length > 0 ? `，跳过 ${res.failed.length} 个（${res.failed.map((x) => x.directory).join('、')}）` : ''}`,
+      );
+      setScanOpen(false);
+      setScanResult(null);
+      setSelectedScan(new Set());
+      invalidate();
+    },
+    onError: fail,
+  });
+
+  const toggleScanItem = (key: string): void => {
+    setSelectedScan((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const adoptSelected = (): void => {
+    const items = (scanResult?.items ?? []).filter((it) => !it.adopted && selectedScan.has(`${it.agent}|${it.path}`));
+    if (items.length === 0) return;
+    adopt.mutate(items);
+  };
+
   const toggle = useMutation({
     mutationFn: (p: { id: string; agentType: string; enabled: boolean }) =>
       api.post<{ preserved?: string }>(`/api/skills/${p.id}/toggle`, p),
@@ -216,9 +286,6 @@ export function SkillsPage() {
   };
 
   const results = searchResult?.skills ?? [];
-  const installedTotalPages = Math.max(1, Math.ceil(installed.length / INSTALLED_PAGE_SIZE));
-  const safeInstalledPage = Math.min(installedPage, installedTotalPages - 1);
-  const pageInstalled = installed.slice(safeInstalledPage * INSTALLED_PAGE_SIZE, (safeInstalledPage + 1) * INSTALLED_PAGE_SIZE);
   const firstRowOfRepo = useMemo(() => {
     const m = new Map<string, string>(); // repo → 首个结果行的 key
     for (const s of results) {
@@ -232,6 +299,9 @@ export function SkillsPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Btn kind="primary" testId="btn-skills-updates" disabled={checkUpdates.isPending} onClick={() => checkUpdates.mutate()}>
           {checkUpdates.isPending ? <Spinner className="h-4 w-4" /> : '检查更新'}
+        </Btn>
+        <Btn testId="btn-skills-scan-local" onClick={() => scanLocal.mutate()} disabled={scanLocal.isPending}>
+          {scanLocal.isPending ? <Spinner className="h-4 w-4" /> : '扫描本机 skill'}
         </Btn>
         <Btn testId="btn-skills-zip" onClick={() => zipInput.current?.click()} disabled={installZip.isPending}>
           {installZip.isPending ? <Spinner className="h-4 w-4" /> : '安装本地 ZIP'}
@@ -258,6 +328,34 @@ export function SkillsPage() {
           安装后同时启用到全部支持 agent
         </label>
       </div>
+
+      {/* 从 GitHub 仓库安装：一次装完整仓 */}
+      <Card className="p-3">
+        <div className="flex items-center gap-2">
+          <Icon name="skills" className="h-4 w-4 shrink-0 text-slate-400" />
+          <input
+            data-testid="skill-repo-install-input"
+            className={inputCls}
+            value={repoInput}
+            placeholder="从 GitHub 仓库安装，如 obra/superpowers 或 https://github.com/obra/superpowers"
+            onChange={(e) => setRepoInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') installRepo();
+            }}
+          />
+          <Btn
+            kind="primary"
+            testId="skill-repo-install-btn"
+            disabled={installCollection.isPending || repoInput.trim() === ''}
+            onClick={installRepo}
+          >
+            {installCollection.isPending && pendingRepo !== null ? <Spinner className="h-4 w-4" /> : '安装整仓'}
+          </Btn>
+        </div>
+        <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+          支持 owner/repo、https://github.com/owner/repo 与 .../tree/&lt;branch&gt;（.git 后缀可选），一次安装整仓全部技能。
+        </p>
+      </Card>
 
       {updateReport && (
         <Card className="p-4">
@@ -328,9 +426,6 @@ export function SkillsPage() {
               },
             ]}
           />
-          {tab === 'installed' && installedTotalPages > 1 && (
-            <Pager page={safeInstalledPage} totalPages={installedTotalPages} onPage={setInstalledPage} />
-          )}
           {tab === 'search' && searchResult !== null && (
             <Btn small onClick={clearSearch}>
               清空搜索
@@ -343,27 +438,21 @@ export function SkillsPage() {
             installed.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
                 <Icon name="skills" className="h-8 w-8 text-slate-300" />
-                <p className="text-sm text-slate-400">还没有安装任何 skill——用上面的搜索或「安装本地 ZIP」开始，SKILL.md 是唯一的准入条件。</p>
+                <p className="text-sm text-slate-400">还没有安装任何 skill——用上面的搜索、「安装本地 ZIP」或「从 GitHub 仓库安装」开始，SKILL.md 是唯一的准入条件。</p>
               </div>
             ) : (
-              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-                {pageInstalled.map((s) => (
-                  <InstalledSkillCard
-                    key={s.id}
-                    s={s}
+              <div className="space-y-3">
+                {groups.map((g) => (
+                  <RepoGroupCard
+                    key={g.repo === '' ? 'local' : g.repo}
+                    group={g}
                     togglePending={toggle.isPending}
                     toggleAllPending={toggleAll.isPending}
                     updatePending={update.isPending}
-                    onToggle={(agentType, enabled) => toggle.mutate({ id: s.id, agentType, enabled })}
-                    onToggleAll={(enabled) =>
-                      toggleAll.mutate({
-                        id: s.id,
-                        enabled,
-                        agentTypes: s.targets.filter((t) => t.enabled !== enabled).map((t) => t.agentType),
-                      })
-                    }
-                    onUpdate={() => update.mutate(s.id)}
-                    onRemove={() => setRemoving(s)}
+                    onToggle={(id, agentType, enabled) => toggle.mutate({ id, agentType, enabled })}
+                    onToggleAll={(id, enabled, agentTypes) => toggleAll.mutate({ id, enabled, agentTypes })}
+                    onUpdate={(id) => update.mutate(id)}
+                    onRemove={(s) => setRemoving(s)}
                   />
                 ))}
               </div>
@@ -402,6 +491,21 @@ export function SkillsPage() {
         </div>
       </Card>
 
+      {scanOpen && (
+        <LocalScanModal
+          result={scanResult}
+          scanning={scanLocal.isPending}
+          selected={selectedScan}
+          adopting={adopt.isPending}
+          onToggle={toggleScanItem}
+          onAdopt={adoptSelected}
+          onClose={() => {
+            setScanOpen(false);
+            setScanResult(null);
+          }}
+        />
+      )}
+
       {removing && (
         <ConfirmDialog
           title="卸载 Skill"
@@ -412,6 +516,155 @@ export function SkillsPage() {
         />
       )}
     </div>
+  );
+}
+
+/** 仓库维度分组卡片：仓库为一级条目（技能数 + 整体分发状态），展开后列出仓库内各 skill */
+function RepoGroupCard(props: {
+  group: SkillRepoGroup;
+  togglePending: boolean;
+  toggleAllPending: boolean;
+  updatePending: boolean;
+  onToggle: (id: string, agentType: string, enabled: boolean) => void;
+  onToggleAll: (id: string, enabled: boolean, agentTypes: string[]) => void;
+  onUpdate: (id: string) => void;
+  onRemove: (s: SkillWithStatus) => void;
+}) {
+  const { group } = props;
+  const [expanded, setExpanded] = useState(true);
+  const enabledCount = group.skills.filter((s) => s.targets.some((t) => t.enabled)).length;
+  const testId = groupTestId(group);
+  return (
+    <div data-testid={testId} className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          data-testid={`${testId}-toggle`}
+          title="展开 / 收起仓库内技能"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        >
+          <Icon name="chevronRight" className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        </button>
+        <span className="min-w-0 truncate text-sm font-semibold text-slate-800" title={groupLabel(group)}>
+          {groupLabel(group)}
+        </span>
+        {group.repo !== '' && group.branch && <Badge tone="gray">{group.branch}</Badge>}
+        <Badge tone="blue">{group.skillCount} 个技能</Badge>
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-slate-400">
+          已分发 {enabledCount}/{group.skillCount}
+        </span>
+      </div>
+      {expanded && (
+        <div className="mt-3 grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+          {group.skills.map((s) => (
+            <InstalledSkillCard
+              key={s.id}
+              s={s}
+              togglePending={props.togglePending}
+              toggleAllPending={props.toggleAllPending}
+              updatePending={props.updatePending}
+              onToggle={(agentType, enabled) => props.onToggle(s.id, agentType, enabled)}
+              onToggleAll={(enabled) =>
+                props.onToggleAll(
+                  s.id,
+                  enabled,
+                  s.targets.filter((t) => t.enabled !== enabled).map((t) => t.agentType),
+                )
+              }
+              onUpdate={() => props.onUpdate(s.id)}
+              onRemove={() => props.onRemove(s)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 本机 skill 扫描弹窗：勾选未纳管项纳管进 SSOT（扫描只读，纳管只写 SSOT） */
+function LocalScanModal(props: {
+  result: LocalSkillScanResult | null;
+  scanning: boolean;
+  selected: Set<string>;
+  adopting: boolean;
+  onToggle: (key: string) => void;
+  onAdopt: () => void;
+  onClose: () => void;
+}) {
+  const { result, scanning, selected, adopting } = props;
+  const items = result?.items ?? [];
+  const selectedCount = items.filter((it) => !it.adopted && selected.has(`${it.agent}|${it.path}`)).length;
+  return (
+    <Modal
+      title="扫描本机 skill"
+      onClose={props.onClose}
+      wide
+      footer={
+        <>
+          <Btn onClick={props.onClose}>关闭</Btn>
+          <Btn kind="primary" testId="skill-adopt-btn" disabled={adopting || selectedCount === 0} onClick={props.onAdopt}>
+            {adopting ? <Spinner className="h-4 w-4" /> : `纳管所选（${selectedCount}）`}
+          </Btn>
+        </>
+      }
+    >
+      <p className="mb-3 text-xs leading-relaxed text-slate-500">
+        扫描各 agent 本机 skills 目录（严格只读）。纳管只写入 Beaver 的 SSOT，不会修改你的 agent 目录；已纳管项不可重复纳管。
+      </p>
+      {scanning ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
+          <Spinner className="h-4 w-4 text-brand-600" /> 正在扫描…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="py-6 text-center text-xs text-slate-400">未在本机 agent 目录发现 skill。</div>
+      ) : (
+        <div className="max-h-96 space-y-1.5 overflow-y-auto">
+          {items.map((it) => {
+            const key = `${it.agent}|${it.path}`;
+            const checked = selected.has(key);
+            return (
+              <label
+                key={key}
+                data-testid={`skill-scan-item-${it.agent}-${it.name}`}
+                className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  it.adopted ? 'border-slate-100 bg-slate-50/60' : checked ? 'border-brand-300 bg-brand-50/50' : 'border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  data-testid={`skill-scan-check-${it.agent}-${it.name}`}
+                  checked={checked}
+                  disabled={it.adopted}
+                  onChange={() => props.onToggle(key)}
+                  className="h-4 w-4"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate font-medium text-slate-800">{it.name}</span>
+                    <Badge tone="gray">{SKILL_AGENT_LABEL[it.agent] ?? it.agent}</Badge>
+                    {it.adopted && <Badge tone="green">已纳管</Badge>}
+                  </span>
+                  {it.description && <span className="block truncate text-xs text-slate-400">{it.description}</span>}
+                  <span className="block truncate font-mono text-[11px] text-slate-400" title={it.path}>
+                    {it.path}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+      {result && result.errors.length > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          {result.errors.map((e) => (
+            <div key={e.agent}>
+              {SKILL_AGENT_LABEL[e.agent] ?? e.agent}：{e.reason}
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
