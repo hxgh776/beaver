@@ -1,7 +1,7 @@
 .worktrees/
 # 前端构建链：node_modules 与 packages/web/dist 不入库，产物提交在 internal/webui/dist
 node_modules/
-dist/
+/packages/web/dist/
 coverage/
 *.log
 .DS_Store
