@@ -170,6 +170,42 @@ func (s *Service) List() ([]WithStatus, error) {
 	return out, nil
 }
 
+// RepoGroup 已安装技能按 GitHub 仓库维度的分组；无仓库来源（本地 ZIP / 纳管）归入 Repo 为空的「本地」组。
+type RepoGroup struct {
+	Repo       string       `json:"repo"`
+	Branch     string       `json:"branch"`
+	SkillCount int          `json:"skillCount"`
+	Skills     []WithStatus `json:"skills"`
+}
+
+// ListGrouped 已安装技能按仓库维度分组，组内保持注册顺序（本地来源集中为一条「本地」组）。
+func (s *Service) ListGrouped() ([]RepoGroup, error) {
+	list, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	groups := []RepoGroup{}
+	index := map[string]int{}
+	for _, row := range list {
+		key, branch := "", ""
+		if row.RepoOwner != nil && row.RepoName != nil {
+			key = fmt.Sprintf("%s/%s", *row.RepoOwner, *row.RepoName)
+			branch = deref(row.Branch)
+		}
+		gi, ok := index[key]
+		if !ok {
+			groups = append(groups, RepoGroup{Repo: key, Branch: branch})
+			gi = len(groups) - 1
+			index[key] = gi
+		}
+		groups[gi].Skills = append(groups[gi].Skills, row)
+	}
+	for i := range groups {
+		groups[i].SkillCount = len(groups[i].Skills)
+	}
+	return groups, nil
+}
+
 func (s *Service) projectionStatus(row store.InstalledSkill) ([]ProjectionStatus, error) {
 	ssotHash, err := s.ssotHash(row)
 	if err != nil {
@@ -240,13 +276,17 @@ func (s *Service) ssotHash(row store.InstalledSkill) (*string, error) {
 	return &h, nil
 }
 
-// InstallFromRepo 从 GitHub 仓库安装单个技能。
+// InstallFromRepo 从 GitHub 仓库安装单个技能（repo 支持 owner/repo 与仓库 URL 形式）。
 func (s *Service) InstallFromRepo(ctx context.Context, repo string, skill, branch string, enableFor []string) (store.InstalledSkill, error) {
-	ref, err := ValidateRepoRef(repo, firstNonEmpty(branch, "main"))
+	nref, err := NormalizeRepoAddress(repo)
 	if err != nil {
 		return store.InstalledSkill{}, err
 	}
-	if branch == "" {
+	ref, err := ValidateRepoRef(nref.Owner+"/"+nref.Name, firstNonEmpty(branch, nref.Branch, "main"))
+	if err != nil {
+		return store.InstalledSkill{}, err
+	}
+	if branch == "" && nref.Branch == "" {
 		ref.Branch, err = s.resolveBranch(ctx, ref.Owner, ref.Name)
 		if err != nil {
 			return store.InstalledSkill{}, err
@@ -296,13 +336,17 @@ func (s *Service) InstallFromLocalZip(zip []byte, skill string, enableFor []stri
 	})
 }
 
-// InstallCollectionFromRepo 集合安装：一次归档收编仓库全部含 SKILL.md 的目录。
+// InstallCollectionFromRepo 集合安装：一次归档收编仓库全部含 SKILL.md 的目录（repo 支持 owner/repo 与仓库 URL 形式）。
 func (s *Service) InstallCollectionFromRepo(ctx context.Context, repo, branch string, enableFor []string) (CollectionInstallReport, error) {
-	ref, err := ValidateRepoRef(repo, firstNonEmpty(branch, "main"))
+	nref, err := NormalizeRepoAddress(repo)
 	if err != nil {
 		return CollectionInstallReport{}, err
 	}
-	if branch == "" {
+	ref, err := ValidateRepoRef(nref.Owner+"/"+nref.Name, firstNonEmpty(branch, nref.Branch, "main"))
+	if err != nil {
+		return CollectionInstallReport{}, err
+	}
+	if branch == "" && nref.Branch == "" {
 		ref.Branch, err = s.resolveBranch(ctx, ref.Owner, ref.Name)
 		if err != nil {
 			return CollectionInstallReport{}, err
@@ -377,6 +421,133 @@ func (s *Service) InstallCollectionFromLocalZip(zip []byte, enableFor []string) 
 		})
 	}
 	return s.admitAll(entries, commonAdmit{Source: "local", EnableFor: enableFor}), nil
+}
+
+// LocalSkillScanItem 本机 agent 目录扫描到的单个 skill。
+type LocalSkillScanItem struct {
+	Agent       string `json:"agent"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Description string `json:"description,omitempty"`
+	// Adopted 已纳管进 SSOT（按纳管后的目录名匹配）
+	Adopted bool `json:"adopted"`
+}
+
+// LocalSkillScanError 单个 agent 目录扫描失败原因（缺失/无权限），不阻断整体扫描。
+type LocalSkillScanError struct {
+	Agent  string `json:"agent"`
+	Reason string `json:"reason"`
+}
+
+// LocalSkillScanResult 本机 skill 扫描结果。
+type LocalSkillScanResult struct {
+	Items  []LocalSkillScanItem `json:"items"`
+	Errors []LocalSkillScanError `json:"errors"`
+}
+
+// LocalSkillAdoptInput 纳管入参：优先用 Path；Path 为空时按 Agent+Name 定位源目录。
+type LocalSkillAdoptInput struct {
+	Agent string `json:"agent"`
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+}
+
+// AdoptResult 纳管结果：installed 与 failed 互斥；单个失败不阻断整批。
+type AdoptResult struct {
+	Installed []store.InstalledSkill     `json:"installed"`
+	Failed    []CollectionInstallFailure `json:"failed"`
+}
+
+// localAgentTypes 有本机 skills 目录的 agent（multica 走远端库，无本地目录，不参与扫描）。
+func localAgentTypes() []string {
+	out := []string{}
+	for _, at := range SkillAgentList {
+		if _, ok := SkillAgentDirs[at]; ok {
+			out = append(out, at)
+		}
+	}
+	return out
+}
+
+// ScanLocalSkills 扫描各 agent 本机 skills 目录，返回已存在的 skill（严格只读，不改任何真实目录）。
+func (s *Service) ScanLocalSkills() (LocalSkillScanResult, error) {
+	res := LocalSkillScanResult{Items: []LocalSkillScanItem{}, Errors: []LocalSkillScanError{}}
+	adopted := map[string]struct{}{}
+	for _, row := range s.opts.GetConfig().Skills {
+		adopted[row.Directory] = struct{}{}
+	}
+	for _, agent := range localAgentTypes() {
+		dir := s.targetDirs[agent]
+		if !dirExists(dir) {
+			res.Errors = append(res.Errors, LocalSkillScanError{Agent: agent, Reason: "目录不存在: " + dir})
+			continue
+		}
+		scanned, err := ScanSkillDirs(dir)
+		if err != nil {
+			res.Errors = append(res.Errors, LocalSkillScanError{Agent: agent, Reason: err.Error()})
+			continue
+		}
+		for _, sc := range scanned {
+			name := firstNonEmpty(metadataName(sc.Metadata), filepath.Base(sc.Dir))
+			item := LocalSkillScanItem{Agent: agent, Name: name, Path: sc.Dir}
+			if sc.Metadata != nil {
+				item.Description = sc.Metadata.Description
+			}
+			if _, ok := adopted[SanitizeInstallName(name)]; ok {
+				item.Adopted = true
+			}
+			res.Items = append(res.Items, item)
+		}
+	}
+	return res, nil
+}
+
+// AdoptLocalSkills 把本机已扫描到的 skill 纳管进 SSOT。
+// 只写 SSOT 与注册表，绝不修改真实 agent 目录；复用 admit 的「同名异来源报错不覆盖」语义。
+func (s *Service) AdoptLocalSkills(inputs []LocalSkillAdoptInput) (AdoptResult, error) {
+	res := AdoptResult{Installed: []store.InstalledSkill{}, Failed: []CollectionInstallFailure{}}
+	for _, in := range inputs {
+		src := in.Path
+		if src == "" {
+			found, err := s.locateLocalSkill(in.Agent, in.Name)
+			if err != nil {
+				res.Failed = append(res.Failed, CollectionInstallFailure{Directory: in.Name, Reason: err.Error()})
+				continue
+			}
+			src = found
+		}
+		hint := firstNonEmpty(in.Name, filepath.Base(src))
+		if !dirExists(src) {
+			res.Failed = append(res.Failed, CollectionInstallFailure{Directory: hint, Reason: "源目录不存在"})
+			continue
+		}
+		row, err := s.admit(admitInput{
+			Source:        "local",
+			DirectoryHint: hint,
+			SourceDir:     src,
+			AdoptedFrom:   optStr(in.Agent),
+		})
+		if err != nil {
+			res.Failed = append(res.Failed, CollectionInstallFailure{Directory: hint, Reason: err.Error()})
+			continue
+		}
+		res.Installed = append(res.Installed, row)
+	}
+	return res, nil
+}
+
+// locateLocalSkill 在指定 agent 的 skills 目录下按目录名/metadata 名定位 skill 源目录。
+func (s *Service) locateLocalSkill(agent, name string) (string, error) {
+	scanned, err := ScanSkillDirs(s.targetDirs[agent])
+	if err != nil {
+		return "", err
+	}
+	for _, sc := range scanned {
+		if filepath.Base(sc.Dir) == name || metadataName(sc.Metadata) == name {
+			return sc.Dir, nil
+		}
+	}
+	return "", inputErrf("未在 %s 的 skills 目录找到 skill: %s", agent, name)
 }
 
 // admitAll 集合收编循环：同名目录去重（首个胜出，scan 按路径排序保证确定性）；单个失败收集进 failed 继续装。
@@ -468,6 +639,8 @@ type admitInput struct {
 	Repo          *RepoRef
 	ReadmeURL     *string
 	EnableFor     []string
+	// AdoptedFrom 纳管来源 agent（仅本机扫描纳管设置），用于分发守卫。
+	AdoptedFrom *string
 }
 
 type commonAdmit struct {
@@ -533,6 +706,9 @@ func (s *Service) admit(input admitInput) (store.InstalledSkill, error) {
 		row.ContentHash = contentHash
 		row.UpdatedAt = now
 		row.InstalledAt = now // 乐观锁前滚：重装视同新装
+		if input.AdoptedFrom != nil {
+			row.AdoptedFrom = input.AdoptedFrom // 刷新时保留/更新纳管来源
+		}
 	} else {
 		id := "skill-" + slug
 		config.Skills = append(config.Skills, store.InstalledSkill{
@@ -547,6 +723,7 @@ func (s *Service) admit(input admitInput) (store.InstalledSkill, error) {
 			ContentHash: contentHash,
 			InstalledAt: now,
 			UpdatedAt:   now,
+			AdoptedFrom: input.AdoptedFrom,
 		})
 		row = &config.Skills[len(config.Skills)-1]
 		// 关联表默认全关：启用是显式动作（与 MCP 分发语义一致）
@@ -635,6 +812,10 @@ func (s *Service) enableTarget(row store.InstalledSkill, agentType string) error
 		return err
 	}
 	dest := filepath.Join(s.targetDirs[agentType], row.Directory)
+	// 纳管来源目录：本机已有用户原件，启用不覆盖（只写 SSOT，不改真实 agent 目录）
+	if row.AdoptedFrom != nil && *row.AdoptedFrom == agentType && dirExists(dest) {
+		return nil
+	}
 	if dirExists(dest) {
 		h, err := ComputeDirHash(dest)
 		if err != nil {
@@ -664,6 +845,10 @@ func (s *Service) disableTarget(row store.InstalledSkill, agentType string) (*st
 	dest := filepath.Join(s.targetDirs[agentType], row.Directory)
 	if !dirExists(dest) {
 		return nil, nil
+	}
+	// 纳管来源目录：用户原件，停用绝不删除（只写 SSOT，不改真实 agent 目录）
+	if row.AdoptedFrom != nil && *row.AdoptedFrom == agentType {
+		return &dest, nil
 	}
 	h, err := ComputeDirHash(dest)
 	if err != nil {

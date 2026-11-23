@@ -523,6 +523,156 @@ func TestResolveSkillSourceDir(t *testing.T) {
 	}
 }
 
+// U-SK-07 仓库地址归一化：owner/repo、GitHub URL、tree/<branch>、.git 后缀、非法输入
+func TestNormalizeRepoAddress(t *testing.T) {
+	cases := []struct {
+		in      string
+		owner   string
+		name    string
+		branch  string
+		wantErr bool
+	}{
+		{"obra/superpowers", "obra", "superpowers", "", false},
+		{"https://github.com/obra/superpowers", "obra", "superpowers", "", false},
+		{"https://github.com/obra/superpowers.git", "obra", "superpowers", "", false},
+		{"https://github.com/obra/superpowers/", "obra", "superpowers", "", false},
+		{"https://github.com/obra/superpowers/tree/dev", "obra", "superpowers", "dev", false},
+		{"https://github.com/obra/superpowers/tree/dev/skills/x", "obra", "superpowers", "dev", false},
+		{"github.com/obra/superpowers", "obra", "superpowers", "", false},
+		{"https://gitlab.com/obra/superpowers", "", "", "", true},
+		{"https://github.com/obra", "", "", "", true},
+		{"obra/superpowers/extra", "", "", "", true},
+		{"", "", "", "", true},
+	}
+	for _, c := range cases {
+		ref, err := NormalizeRepoAddress(c.in)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("NormalizeRepoAddress(%q) 应报错", c.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("NormalizeRepoAddress(%q) 意外报错: %v", c.in, err)
+			continue
+		}
+		if ref.Owner != c.owner || ref.Name != c.name || ref.Branch != c.branch {
+			t.Errorf("NormalizeRepoAddress(%q) = %+v, want %s/%s@%s", c.in, ref, c.owner, c.name, c.branch)
+		}
+	}
+}
+
+// U-SK-08 仓库维度分组：同仓库合为一条，本地来源归入「本地」组
+func TestListGrouped(t *testing.T) {
+	e := newEnv(t)
+	e.fetchZip = func(url string) ([]byte, error) {
+		if containsStr2(url, "obra/superpowers/archive/refs/heads/main.zip") {
+			return makeZip(t, []zipEntry{
+				{name: "superpowers-main/skills/alpha/SKILL.md", content: "---\nname: alpha\n---\nA"},
+				{name: "superpowers-main/skills/beta/SKILL.md", content: "---\nname: beta\n---\nB"},
+			}), nil
+		}
+		return nil, fmt.Errorf("未桩定: %s", url)
+	}
+	// URL 形式整仓安装
+	if _, err := e.service.InstallCollectionFromRepo(context.Background(), "https://github.com/obra/superpowers", "", nil); err != nil {
+		t.Fatalf("URL 形式整仓安装失败: %v", err)
+	}
+	if _, err := e.service.InstallFromLocalZip(readFixture(t, "demo-skill.zip"), "", nil); err != nil {
+		t.Fatalf("本地 ZIP 安装失败: %v", err)
+	}
+	groups, err := e.service.ListGrouped()
+	mustNoErr(t, err)
+	if len(groups) != 2 {
+		t.Fatalf("应为 2 组（仓库 + 本地）: %+v", groups)
+	}
+	repo := groups[0]
+	if repo.Repo != "obra/superpowers" || repo.SkillCount != 2 || len(repo.Skills) != 2 {
+		t.Fatalf("仓库组不符: %+v", repo)
+	}
+	local := groups[1]
+	if local.Repo != "" || local.SkillCount != 1 {
+		t.Fatalf("本地组不符: %+v", local)
+	}
+}
+
+// U-SK-09 本机扫描 + 纳管：列出发现项、纳管只写 SSOT、重复扫描标已纳管、停用/卸载不删原件
+func TestScanAndAdoptLocalSkills(t *testing.T) {
+	e := newEnv(t)
+	claudeDir := filepath.Join(e.sandbox, ".claude", "skills", "local-alpha")
+	codexDir := filepath.Join(e.sandbox, ".codex", "skills", "local-beta")
+	mustWrite(t, filepath.Join(claudeDir, "SKILL.md"), "---\nname: local-alpha\ndescription: A\n---\nalpha body\n")
+	mustWrite(t, filepath.Join(codexDir, "SKILL.md"), "---\nname: local-beta\n---\nbeta body\n")
+
+	scan, err := e.service.ScanLocalSkills()
+	mustNoErr(t, err)
+	if len(scan.Items) != 2 {
+		t.Fatalf("应扫到 2 个本机 skill: %+v", scan.Items)
+	}
+	for _, it := range scan.Items {
+		if it.Adopted {
+			t.Fatalf("未纳管不应标已纳管: %+v", it)
+		}
+	}
+
+	report, err := e.service.AdoptLocalSkills([]LocalSkillAdoptInput{
+		{Agent: "claude-code", Name: "local-alpha", Path: claudeDir},
+		{Agent: "codex", Name: "local-beta", Path: codexDir},
+	})
+	mustNoErr(t, err)
+	if len(report.Installed) != 2 || len(report.Failed) != 0 {
+		t.Fatalf("纳管结果不符: %+v", report)
+	}
+	for _, row := range report.Installed {
+		if row.AdoptedFrom == nil {
+			t.Fatalf("应记录纳管来源: %+v", row)
+		}
+		if !dirExists(filepath.Join(e.sandbox, "skills", row.Directory)) {
+			t.Fatalf("SSOT 应落盘: %s", row.Directory)
+		}
+	}
+	// 纳管不得改动真实 agent 目录
+	if _, err := os.Stat(filepath.Join(claudeDir, "SKILL.md")); err != nil {
+		t.Fatalf("纳管不得改动真实 agent 目录")
+	}
+
+	// 重复扫描：已纳管项标已纳管
+	scan2, err := e.service.ScanLocalSkills()
+	mustNoErr(t, err)
+	for _, it := range scan2.Items {
+		if !it.Adopted {
+			t.Fatalf("重复扫描应标已纳管: %+v", it)
+		}
+	}
+
+	// 启用投影到来源 agent：不覆盖原件
+	row := report.Installed[0]
+	if _, err := e.service.Toggle(row.ID, "claude-code", true); err != nil {
+		t.Fatalf("启用投影失败: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(claudeDir, "SKILL.md"))
+	mustNoErr(t, err)
+	if !containsStr2(string(body), "alpha body") {
+		t.Fatalf("启用不得覆盖用户原件")
+	}
+	// 停用：保留原件，不删除
+	off, err := e.service.Toggle(row.ID, "claude-code", false)
+	mustNoErr(t, err)
+	if off.Preserved == nil || *off.Preserved != claudeDir {
+		t.Fatalf("停用应保留来源目录: %+v", off)
+	}
+	if _, err := os.Stat(filepath.Join(claudeDir, "SKILL.md")); err != nil {
+		t.Fatalf("停用不得删除用户原件")
+	}
+	// 卸载：来源目录仍保留
+	if _, err := e.service.Uninstall(row.ID); err != nil {
+		t.Fatalf("卸载失败: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(claudeDir, "SKILL.md")); err != nil {
+		t.Fatalf("卸载不得删除用户原件")
+	}
+}
+
 // —— 辅助：无依赖最小 ZIP 构造（stored）——//
 
 type zipEntry struct {

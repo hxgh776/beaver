@@ -55,6 +55,76 @@ func ValidateRepoRef(repo, branch string) (RepoRef, error) {
 	return RepoRef{Owner: owner, Name: name, Branch: branch}, nil
 }
 
+// NormalizeRepoAddress 归一化 GitHub 仓库地址，支持三种形式：
+//   - owner/repo
+//   - https://github.com/owner/repo（`.git` 后缀、尾斜杠可选）
+//   - https://github.com/owner/repo/tree/<branch>（更深的子路径只取分支）
+//
+// 返回的 Branch 为空表示地址未指定分支，交由安装流程回退探测 main/master。
+// 非 GitHub 地址、非法坐标与路径穿越一律返回 SkillInputError。
+func NormalizeRepoAddress(raw string) (RepoRef, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return RepoRef{}, inputErrf("仓库地址不能为空")
+	}
+	if strings.Contains(s, "://") || strings.HasPrefix(strings.ToLower(s), "github.com/") {
+		return normalizeGithubURL(s)
+	}
+	// 纯坐标 owner/repo：仅允许一个斜杠，多余路径段明确拒绝
+	if strings.Count(s, "/") != 1 {
+		return RepoRef{}, inputErrf("非法仓库地址: %s", raw)
+	}
+	ref, err := ValidateRepoRef(s, "main")
+	if err != nil {
+		return RepoRef{}, err
+	}
+	ref.Branch = ""
+	return ref, nil
+}
+
+// normalizeGithubURL 解析 GitHub URL，提取 owner/repo 与可选分支。
+func normalizeGithubURL(raw string) (RepoRef, error) {
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return RepoRef{}, inputErrf("非法仓库地址: %s", raw)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "github.com" && host != "www.github.com" {
+		return RepoRef{}, inputErrf("仅支持 GitHub 仓库地址: %s", raw)
+	}
+	segs := []string{}
+	for _, seg := range strings.Split(u.Path, "/") {
+		if seg != "" {
+			segs = append(segs, seg)
+		}
+	}
+	if len(segs) < 2 {
+		return RepoRef{}, inputErrf("GitHub 地址缺少 owner/repo: %s", raw)
+	}
+	owner, name := segs[0], strings.TrimSuffix(segs[1], ".git")
+	branch := ""
+	switch {
+	case len(segs) == 2:
+		// 仓库根
+	case len(segs) >= 3 && segs[2] == "tree":
+		if len(segs) < 4 {
+			return RepoRef{}, inputErrf("仓库地址缺少分支: %s", raw)
+		}
+		branch = segs[3] // tree/<branch>/<子路径> 只取分支，忽略更深的子路径
+	default:
+		return RepoRef{}, inputErrf("仅支持仓库根或 /tree/<branch> 地址: %s", raw)
+	}
+	ref, err := ValidateRepoRef(owner+"/"+name, firstNonEmpty(branch, "main"))
+	if err != nil {
+		return RepoRef{}, err
+	}
+	ref.Branch = branch
+	return ref, nil
+}
+
 // GithubArchiveURL GitHub 归档 URL 出口断言：拼接结果必须仍是本仓库的 archive 路径（防 branch 劫持落点）。
 func GithubArchiveURL(owner, name, branch string) (string, error) {
 	for _, seg := range strings.Split(branch, "/") {
