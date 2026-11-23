@@ -115,6 +115,9 @@ type InstalledSkill struct {
 	ContentHash string   `json:"contentHash"`
 	InstalledAt string   `json:"installedAt"`
 	UpdatedAt   string   `json:"updatedAt"`
+	// AdoptedFrom 纳管来源 agent（本机扫描纳管时记录）。用于分发守卫：
+	// 停用/卸载该 agent 的投影时绝不删除用户原件目录（只写 SSOT，不改真实 agent 目录）。
+	AdoptedFrom *string `json:"adoptedFrom,omitempty"`
 }
 
 type SkillTarget struct {
